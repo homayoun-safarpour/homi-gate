@@ -1,37 +1,29 @@
-# Market need — Ireland/EU hire signals → homi-gate
+# Why these gates
 
-Public JD mirrors + careers pages (Dublin / Ireland / EU-hiring remote), skimmed 2026-09. Skill tags that gate interviews — not toolkit logos.
+Agent CI often stays green while the run is truncated, the next worker gets `context: null`, or MCP exposes every tool. Those are contract failures — they do not need an LLM judge.
 
-## What live JDs actually ask for
+## Signals (public hiring + production writing, 2026)
 
-1. **Eval harness + CI release gates**  
-   Regression suites and green/red quality gates before ship. “Owned the eval harness.” “Eval as engineering” + release gates. Automated retrieval / agent-behavior metrics.
+Live Ireland / EU AI engineering roles and practitioner notes keep asking for the same shape:
 
-2. **MCP / tool contracts — wrong-tool = 0**  
-   MCP or MCP-style tool protocols in production. Idempotent orchestration. Named tools, not “whatever the model picks.”
+1. **Eval harness + release gates** — regression that can go red before merge  
+2. **MCP / tool contracts** — named allowlist (wrong-tool toward zero), not “enable the whole server”  
+3. **Agents that stop** — completion is a receipt field, not a vibe  
+4. **Handoff boundaries** — silent null context while spans look healthy is a known multi-agent fail class  
+5. **Asserts over logos** — a green bar beats naming a framework
 
-3. **Completion ≠ satisfaction**  
-   Agents that stop. HITL checkpoints. Agentic-behavior eval. A run that truncates mid-tool is not a successful completion — the receipt must carry a completion bit.
+## Mapping
 
-4. **Handoff context: null**  
-   Multi-agent / failover paths need compact handoffs (`proved` | `pending=<one>` | `stop` | `forbidden` | `report`). `context: null` plus a transcript dump is the anti-pattern that burns the next worker.
+| Failure mode | Command | Assert |
+|--------------|---------|--------|
+| Truncated / incomplete run | `check-completion` | completion bit / complete status; not truncated |
+| Null or incomplete handoff | `check-handoff` | required fields non-null; one pending; stop present |
+| Open MCP surface | `check-mcp-allowlist` | allowlist+denylist or disabled+named tools |
 
-5. **Gates with numbers / asserts**  
-   Sell the red CI bar and the count (unsupported=0, wrong-tool=0, truncated=false). Do not treat a framework name as proof of hire-ready skill.
+## Falsifier
 
-## How homi-gate maps
-
-| Signal | Gate command | Fail-closed assert |
-|--------|--------------|--------------------|
-| Agents that stop | `check-completion` | `completion_bit` / complete status; `truncated≠true` |
-| Compact handoff | `check-handoff` | required fields non-null; no `context:null`; one `pending` |
-| MCP wrong-tool=0 shape | `check-mcp-allowlist` | allowlist+denylist, or `enabled:false` + named tools |
+If the example fixtures in this repo do not produce exit `1` on the bad paths, the product claim is false — fix or delete.
 
 ## What this is not
 
-- Not a full eval framework.
-- Not a RAG scorer.
-- Not a substitute for human review on regulated paths.
-- Not auto-publish / not a LinkedIn bot.
-
-It is the thin CI layer that turns “we care about evals / MCP / stop” into merge blockers.
+Not a full eval stack. Not a judge. Not auto-outreach. Thin CI layer only.
