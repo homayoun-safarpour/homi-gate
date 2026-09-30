@@ -1,0 +1,4 @@
+mcp:
+  enabled: false
+  tools:
+    - search_public_docs

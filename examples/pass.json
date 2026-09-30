@@ -1,0 +1,8 @@
+{
+  "run_id": "synth-001",
+  "status": "completed",
+  "completion_bit": true,
+  "truncated": false,
+  "steps": 4,
+  "notes": "synthetic happy path"
+}
