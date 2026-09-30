@@ -1,20 +1,20 @@
-# homi-gate
+﻿# homi-gate
 
 Agent CI often stays green while the run is truncated, the next worker gets `context: null`, or MCP exposes every tool. Those are contract failures. They do not need an LLM judge.
 
 **homi-gate** is a thin, fail-closed CLI: three deterministic checks, exit `0` or `1`, no model in the loop.
 
-1. **Completion bit** — truncated / incomplete receipts fail  
-2. **Handoff contract** — null context and missing stop fields fail  
-3. **MCP allowlist** — “enable the whole server” shapes fail  
+1. **Completion bit** â€” truncated / incomplete receipts fail  
+2. **Handoff contract** â€” null context and missing stop fields fail  
+3. **MCP allowlist** â€” â€œenable the whole serverâ€ shapes fail  
 
-[Why these three](docs/MARKET.md) · MIT
+[Why these three](docs/MARKET.md) Â· MIT
 
 ---
 
 ## Install
 
-Python ≥ 3.11. From this repo:
+Python â‰¥ 3.11. From this repo:
 
 ```bash
 pip install -e ".[dev]"
@@ -54,8 +54,8 @@ Also covered: `examples/pass.jsonl`, `examples/mcp_disabled_ok.yaml` (explicitly
 | Command | Pass when | Fail when |
 |---------|-----------|-----------|
 | `check-completion` | `completion_bit: true` (or `complete: true`), or a known complete `status` | `truncated: true` / incomplete status / missing bit+status |
-| `check-handoff` | required fields present and non-null; exactly one `pending` | `context: null`; missing `stop` / `proved` / … |
-| `check-mcp-allowlist` | allowlist **and** denylist, **or** `enabled: false` with named tools | open “enable whole server” shape |
+| `check-handoff` | required fields present and non-null; exactly one `pending` | `context: null`; missing `stop` / `proved` / â€¦ |
+| `check-mcp-allowlist` | allowlist **and** denylist, **or** `enabled: false` with named tools | open â€œenable whole serverâ€ shape |
 
 Handoff required fields: `from_agent`, `to_agent`, `proved`, `pending`, `stop`, `forbidden`, `report` (aliases `from` / `to` accepted). Receipts may be JSON, a JSON list, or JSONL (final record wins for completion).
 
@@ -72,11 +72,17 @@ Wire into any repo:
     homi-gate check-mcp-allowlist path/to/mcp.yaml
 ```
 
-This repository’s workflow: [.github/workflows/ci.yml](.github/workflows/ci.yml).
+This repositoryâ€™s workflow: [.github/workflows/ci.yml](.github/workflows/ci.yml).
 
 ## Composition
 
 Use this **beside** full eval stacks (Promptfoo, DeepEval, Ragas, judge harnesses). Those score quality and trajectories. This only fails closed on completion, handoff, and MCP contract shapes. It does not replace Stop-hook tools, LangSmith, or human review.
+
+### Optional: Promptfoo quality evals (beside Homi Gate)
+
+Contracts stay here. For prompt/agent **quality** in CI, add Promptfoo with **deterministic** asserts (`not-contains` / `is-json` / trajectory tool checks) and `--fail-on-error` — never LLM-rubric alone for green. See Promptfoo [CI/CD](https://www.promptfoo.dev/docs/integrations/ci-cd/) + [asserts](https://www.promptfoo.dev/docs/configuration/expected-outputs/). Companion trajectory match: LangChain AgentEvals (Course 031).
+
+Then still run Homi Gate on receipts (completion · handoff · MCP).
 
 ## Non-goals
 
@@ -100,7 +106,7 @@ Build-in-public drafts (manual post only): [CONTENT/FOLLOWERS.md](CONTENT/FOLLOW
 
 ## License
 
-MIT — [LICENSE](LICENSE).
+MIT â€” [LICENSE](LICENSE).
 
 ## Safety
 
