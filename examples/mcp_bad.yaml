@@ -1,0 +1,4 @@
+mcp:
+  enabled: true
+  # missing allowlist and denylist — open tool surface
+  tools: []

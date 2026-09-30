@@ -1,0 +1,10 @@
+mcp:
+  enabled: true
+  allowlist:
+    - search_public_docs
+    - read_repo_file
+    - run_pytest
+  denylist:
+    - shell_raw
+    - send_email
+    - exfiltrate

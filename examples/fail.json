@@ -1,0 +1,8 @@
+{
+  "run_id": "synth-002",
+  "status": "truncated",
+  "completion_bit": false,
+  "truncated": true,
+  "steps": 2,
+  "notes": "agent stopped mid-tool; no completion bit"
+}

@@ -1,0 +1,10 @@
+{
+  "from_agent": "worker-a",
+  "to_agent": "worker-b",
+  "proved": null,
+  "pending": ["goal-one", "goal-two", "goal-three"],
+  "stop": "",
+  "forbidden": ["secrets"],
+  "report": "see above",
+  "context": null
+}
