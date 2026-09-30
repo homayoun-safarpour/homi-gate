@@ -15,11 +15,13 @@ I’ve been reading Dublin/Ireland AI eng JDs. The hire signal isn’t “we use
 - MCP wrong-tool = 0  
 - agents that actually stop  
 
-Shipping a tiny OSS gate this week: **homi-gate** — fail-closed checks for completion bit, handoff contracts, MCP allowlist.
+Open-sourced a tiny gate tonight: **homi-gate** — fail-closed checks for completion bit, handoff contracts, MCP allowlist.
 
 Completion ≠ satisfaction. If the receipt says truncated, CI should go red.
 
-#AIEngineering #LLMOps #Dublin
+https://github.com/homayoun-safarpour/homi-gate
+
+#AIEngineering #LLMOps #Evals
 
 ---
 
@@ -31,7 +33,7 @@ If Worker-B inherits a chat dump and a null context field, you didn’t build mu
 
 homi-gate `check-handoff`: required fields non-null, one pending goal, stop condition present. Fail closed.
 
-Repo dropping soon (MIT).
+Repo: https://github.com/homayoun-safarpour/homi-gate
 
 ---
 
