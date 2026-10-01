@@ -1,0 +1,47 @@
+# Soft / LLM companion lane — field-remix-2 two-speed (Autonoma llm-evals).
+#
+# Triggers: workflow_dispatch only in this MIT stub (optionally enable
+# push-to-main + nightly cron when a real eval runner is wired).
+# Soft NEVER runs alone as ACCEPT: det (ci.yml) gates every PR; soft is
+# advisory companion on merge|nightly. Cite PAPER-032 · Autonoma:
+#   https://getautonoma.com/blog/how-to-run-llm-evals-in-ci-cd
+#
+# Falsifier: skip-when-no-key still green = theater.
+# This job is fail-closed: missing key → exit 1 (skip ≠ pass).
+# continue-on-error: false so a red soft check cannot be ignored as green.
+name: soft-lane
+
+on:
+  workflow_dispatch:
+  # Uncomment when a real LLM eval runner is wired (never every PR):
+  # push:
+  #   branches: [main, master]
+  # schedule:
+  #   - cron: "0 2 * * *"   # nightly UTC
+
+jobs:
+  soft-companion:
+    name: soft (never alone)
+    runs-on: ubuntu-latest
+    continue-on-error: false
+    steps:
+      - name: Soft policy + fail-closed key gate
+        env:
+          # Optional secret — absence must NOT green the job
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+        run: |
+          set -euo pipefail
+          echo "=== soft never ACCEPT alone (PAPER-032) ==="
+          echo "det lane = homi-gate check-* every PR (ci.yml)"
+          echo "soft lane = merge|nightly optional companion — NEVER sole gate"
+          echo "cite: Autonoma two-speed https://getautonoma.com/blog/how-to-run-llm-evals-in-ci-cd"
+          if [ -z "${LLM_API_KEY:-}" ]; then
+            echo "::error::SKIP≠PASS: no LLM_API_KEY. Soft path fail-closed (theater falsifier)."
+            echo "Wire secrets + a real eval runner before enabling soft on merge/nightly."
+            exit 1
+          fi
+          # Public stub: do not call APIs even if a key is present.
+          # Soft must not go green on "key exists" theater without a real runner.
+          echo "::error::Stub soft lane: key present but no LLM eval runner wired. Refusing green theater."
+          echo "Replace this step with a real N-run / baseline eval (Autonoma pattern); soft still never ACCEPT alone."
+          exit 1
