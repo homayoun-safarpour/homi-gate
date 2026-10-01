@@ -1,0 +1,10 @@
+{
+  "run_id": "zero-early-stall-001",
+  "field_remix": "a2e-two-zero",
+  "correctness": 0,
+  "plan_complete": false,
+  "tool_call_count": 12,
+  "unique_tools": 1,
+  "tool_invocation_valid": true,
+  "notes": "A3 early stall — high recon spam, unique_tools≤1, correctness=0"
+}

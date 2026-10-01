@@ -1,0 +1,30 @@
+{
+  "run_id": "span-ok-001",
+  "field_remix": "a2e-spans",
+  "tool_use": true,
+  "spans": [
+    {
+      "span_id": "parent-1",
+      "name": "agent.run",
+      "kind": "agent",
+      "status": "ok",
+      "children": [
+        {
+          "span_id": "tool-1",
+          "name": "search_docs",
+          "kind": "tool",
+          "status": "ok",
+          "args": {"q": "homi-gate"}
+        },
+        {
+          "span_id": "tool-2",
+          "name": "write_receipt",
+          "kind": "tool",
+          "status": "ok",
+          "args": {"path": "out/proof.md"}
+        }
+      ]
+    }
+  ],
+  "notes": "A1+A2 pass — parent agent + tool children with name/status/args"
+}

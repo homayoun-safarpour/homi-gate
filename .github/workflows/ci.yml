@@ -38,6 +38,8 @@ jobs:
           homi-gate check-mcp-allowlist examples/mcp_ok.yaml
           homi-gate check-mcp-allowlist examples/mcp_disabled_ok.yaml
           homi-gate check-tools examples/tools_ok.json
+          homi-gate check-spans examples/span_ok.json
+          homi-gate check-spans --two-zero examples/zero_early_stall.json examples/zero_late_tool_malform.json
 
       - name: Demo CLI — expect FAIL (fail-closed smokes)
         run: |
@@ -47,3 +49,5 @@ jobs:
           ! homi-gate check-handoff examples/handoff_bad.json
           ! homi-gate check-mcp-allowlist examples/mcp_bad.yaml
           ! homi-gate check-tools examples/tools_wrong.json
+          ! homi-gate check-spans examples/span_missing_tool.json
+          ! homi-gate check-spans examples/tool_malform.json
