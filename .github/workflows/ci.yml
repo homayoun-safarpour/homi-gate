@@ -1,3 +1,9 @@
+# Two-speed CI (field-remix-2 / Autonoma):
+#   DET lane (this workflow) — every PR/push: pytest + all homi-gate check-* on
+#     known pass fixtures AND fail-fixture smokes that expect exit 1.
+#   SOFT lane — optional merge|nightly companion only; NEVER alone / NEVER ACCEPT
+#     without det. See soft-lane.yml stub + README "Two-speed CI".
+# Cite: PAPER-032 · https://getautonoma.com/blog/how-to-run-llm-evals-in-ci-cd
 name: ci
 
 on:
@@ -6,7 +12,9 @@ on:
   pull_request:
 
 jobs:
-  test-and-demo:
+  # Deterministic lane — free, fast, every commit (Autonoma deterministic-tests)
+  det:
+    name: det (every PR)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,17 +29,21 @@ jobs:
       - name: Pytest
         run: pytest -q
 
-      - name: Demo CLI — expect PASS
+      - name: Demo CLI — expect PASS (all check-*)
         run: |
+          set -euo pipefail
           homi-gate check-completion examples/pass.json
           homi-gate check-completion examples/pass.jsonl
           homi-gate check-handoff examples/handoff_ok.json
           homi-gate check-mcp-allowlist examples/mcp_ok.yaml
           homi-gate check-mcp-allowlist examples/mcp_disabled_ok.yaml
+          homi-gate check-tools examples/tools_ok.json
 
-      - name: Demo CLI — expect FAIL (fail-closed)
+      - name: Demo CLI — expect FAIL (fail-closed smokes)
         run: |
-          # These must exit non-zero; `!` inverts so the step stays green when gates fail correctly
+          set -euo pipefail
+          # Each must exit non-zero; `!` inverts so the step stays green when gates fail correctly
           ! homi-gate check-completion examples/fail.json
           ! homi-gate check-handoff examples/handoff_bad.json
           ! homi-gate check-mcp-allowlist examples/mcp_bad.yaml
+          ! homi-gate check-tools examples/tools_wrong.json

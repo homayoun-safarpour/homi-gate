@@ -81,7 +81,18 @@ Wire into any repo:
     homi-gate check-tools path/to/tools-receipt.json
 ```
 
-This repository’s workflow: [.github/workflows/ci.yml](.github/workflows/ci.yml).
+This repository’s **det** workflow: [.github/workflows/ci.yml](.github/workflows/ci.yml) — pytest + every `check-*` on pass fixtures **and** fail-fixture smokes (`!` invert → exit 1 expected).
+
+### Two-speed CI (field-remix-2 / Autonoma)
+
+| Lane | When | What | ACCEPT? |
+|------|------|------|---------|
+| **Det** | every PR / push | `pytest` + `homi-gate check-*` exit codes | Yes — authorize stop |
+| **Soft** | merge / nightly optional | LLM / judge companion (stub: [soft-lane.yml](.github/workflows/soft-lane.yml)) | **Never alone** |
+
+Pattern from [Autonoma — How to run LLM evals in CI/CD](https://getautonoma.com/blog/how-to-run-llm-evals-in-ci-cd) (det every commit; evals merge + nightly). Homi map: det = `check-*`; soft = optional companion. **PAPER-032**: soft / judge never ACCEPT alone.
+
+**Falsifier:** skip-when-no-key still green = theater. The soft stub is `workflow_dispatch` only, `continue-on-error: false`, and **exits 1** when `LLM_API_KEY` is missing (skip ≠ pass) or when no real eval runner is wired. Soft never greens by skipping keys.
 
 ## Composition
 
