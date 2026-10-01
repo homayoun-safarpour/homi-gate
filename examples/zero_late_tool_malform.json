@@ -1,0 +1,10 @@
+{
+  "run_id": "zero-late-tool-malform-001",
+  "field_remix": "a2e-two-zero",
+  "correctness": 0,
+  "plan_complete": true,
+  "tool_call_count": 3,
+  "unique_tools": 2,
+  "tool_invocation_valid": false,
+  "notes": "A3 late malform — plan_complete then tool_invocation_valid=false, correctness=0"
+}

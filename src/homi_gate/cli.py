@@ -1,4 +1,4 @@
-"""homi-gate CLI — fail-closed checks for completion, handoff, MCP allowlist, tool correctness."""
+"""homi-gate CLI — fail-closed checks for completion, handoff, MCP allowlist, tool correctness, spans (A2E)."""
 
 from __future__ import annotations
 
@@ -388,6 +388,349 @@ def check_tools(path: Path, *, exact_args: bool = False) -> list[str]:
     return reasons
 
 
+
+
+# --- spans / A2E thin det asserts (field-remix-3 / PAPER-FIELD-REMIX-3 / arXiv 2608.07346) ---
+
+_TOOL_SPAN_KINDS = frozenset({"tool", "TOOL", "tool_call", "TOOL_CALL"})
+_AGENT_SPAN_KINDS = frozenset({"agent", "AGENT", "chain", "CHAIN", "llm", "LLM", "run", "parent"})
+_TOOL_STATUS_OK = frozenset({"ok", "error", "denied"})
+_DEFAULT_EARLY_STALL_MIN_CALLS = 5
+
+
+def _claims_tool_use(rec: dict[str, Any]) -> bool:
+    """True when the receipt claims tool use (A1 applies)."""
+    for key in ("tool_use", "claimed_tool_use", "uses_tools"):
+        if rec.get(key) is True:
+            return True
+    count = rec.get("tool_call_count")
+    if isinstance(count, int) and count > 0:
+        return True
+    for key in _CALLED_TOOL_KEYS:
+        val = rec.get(key)
+        if isinstance(val, list) and len(val) > 0:
+            return True
+    # Presence of any tool-kind span also counts as a claim
+    if _collect_tool_spans(rec.get("spans")):
+        return True
+    return False
+
+
+def _span_kind(span: dict[str, Any]) -> str:
+    for key in ("kind", "type", "role", "span_kind", "openinference_span_kind"):
+        val = span.get(key)
+        if isinstance(val, str) and val.strip():
+            return val.strip()
+    return ""
+
+
+def _is_tool_span(span: dict[str, Any]) -> bool:
+    kind = _span_kind(span).lower()
+    if kind in {k.lower() for k in _TOOL_SPAN_KINDS}:
+        return True
+    # Heuristic: explicit tool name field + args often means tool even without kind
+    if span.get("is_tool") is True:
+        return True
+    return False
+
+
+def _iter_spans_nested(spans: Any) -> list[dict[str, Any]]:
+    """Flatten nested children / flat list into a list of span dicts (depth-first)."""
+    out: list[dict[str, Any]] = []
+    if not isinstance(spans, list):
+        return out
+    for span in spans:
+        if not isinstance(span, dict):
+            continue
+        out.append(span)
+        kids = span.get("children") or span.get("spans")
+        if kids:
+            out.extend(_iter_spans_nested(kids))
+    return out
+
+
+def _collect_tool_spans(spans: Any) -> list[dict[str, Any]]:
+    return [s for s in _iter_spans_nested(spans) if _is_tool_span(s)]
+
+
+def _collect_parent_spans(spans: Any) -> list[dict[str, Any]]:
+    """Parent = top-level spans, or spans with kind agent/chain/llm, or spans that have children."""
+    if not isinstance(spans, list):
+        return []
+    parents: list[dict[str, Any]] = []
+    for span in spans:
+        if not isinstance(span, dict):
+            continue
+        kind = _span_kind(span).lower()
+        has_kids = isinstance(span.get("children") or span.get("spans"), list) and len(
+            span.get("children") or span.get("spans") or []
+        ) > 0
+        if kind in {k.lower() for k in _AGENT_SPAN_KINDS} or has_kids or span.get("parent_id") in (None, "", 0):
+            # For flat lists: treat roots (no parent_id / parent_id null) as parents
+            if "parent_id" in span and span.get("parent_id") not in (None, "", 0):
+                continue
+            parents.append(span)
+    # Flat parent_id form: also include any span referenced as parent of a tool
+    flat = _iter_spans_nested(spans)
+    by_id = {s.get("span_id"): s for s in flat if isinstance(s.get("span_id"), (str, int))}
+    for tool in _collect_tool_spans(spans):
+        pid = tool.get("parent_id")
+        if pid in by_id and by_id[pid] not in parents:
+            parents.append(by_id[pid])
+    return parents
+
+
+def _tool_span_name(span: dict[str, Any]) -> str | None:
+    for key in ("name", "tool", "tool_name", "function"):
+        val = span.get(key)
+        if isinstance(val, str) and val.strip():
+            return val.strip()
+        if key == "function" and isinstance(val, dict):
+            nested = val.get("name")
+            if isinstance(nested, str) and nested.strip():
+                return nested.strip()
+    return None
+
+
+def _tool_span_args(span: dict[str, Any]) -> Any:
+    for key in ("args", "arguments", "input", "input_parameters", "params", "attributes"):
+        if key in span:
+            return span[key]
+    return None
+
+
+def assert_span_tree_min(rec: dict[str, Any]) -> list[str]:
+    """A1: when tool use claimed, require ≥1 parent + ≥1 child tool span with name+status."""
+    reasons: list[str] = []
+    if not _claims_tool_use(rec):
+        return reasons  # A1 only applies when tool use is claimed
+    spans = rec.get("spans")
+    if spans is None:
+        return ["A1 assert_span_tree_min: missing spans (tool use claimed)"]
+    if not isinstance(spans, list) or len(spans) == 0:
+        return ["A1 assert_span_tree_min: spans must be a non-empty list"]
+
+    parents = _collect_parent_spans(spans)
+    tools = _collect_tool_spans(spans)
+    if not parents:
+        reasons.append("A1 assert_span_tree_min: no parent span found")
+    if not tools:
+        reasons.append(
+            "A1 assert_span_tree_min: missing tool span on run that claimed tool use"
+        )
+        return reasons
+
+    for i, tool in enumerate(tools):
+        name = _tool_span_name(tool)
+        status = tool.get("status")
+        if name is None:
+            reasons.append(f"A1 assert_span_tree_min: tool span[{i}] missing non-empty name")
+        if status is None or (isinstance(status, str) and not status.strip()):
+            reasons.append(f"A1 assert_span_tree_min: tool span[{i}] missing status")
+    return reasons
+
+
+def assert_tool_invocation_valid(rec: dict[str, Any]) -> list[str]:
+    """A2: every tool span status ∈ {ok,error,denied}; args object; non-empty name."""
+    reasons: list[str] = []
+    spans = rec.get("spans")
+    if spans is None:
+        if _claims_tool_use(rec):
+            return ["A2 assert_tool_invocation_valid: missing spans (tool use claimed)"]
+        return reasons
+    if not isinstance(spans, list):
+        return ["A2 assert_tool_invocation_valid: spans must be a list"]
+
+    tools = _collect_tool_spans(spans)
+    if _claims_tool_use(rec) and not tools:
+        reasons.append("A2 assert_tool_invocation_valid: no tool spans to validate")
+        return reasons
+
+    for i, tool in enumerate(tools):
+        name = _tool_span_name(tool)
+        if name is None:
+            reasons.append(f"A2 assert_tool_invocation_valid: tool span[{i}] empty/missing name")
+        status = tool.get("status")
+        status_l = str(status).lower().strip() if status is not None else ""
+        if status_l not in _TOOL_STATUS_OK:
+            reasons.append(
+                f"A2 assert_tool_invocation_valid: tool span[{i}] status={status!r} "
+                f"not in {{ok,error,denied}}"
+            )
+        args = _tool_span_args(tool)
+        if args is None:
+            reasons.append(f"A2 assert_tool_invocation_valid: tool span[{i}] missing args object")
+        elif not isinstance(args, dict):
+            reasons.append(
+                f"A2 assert_tool_invocation_valid: tool span[{i}] args must be object, "
+                f"got {type(args).__name__}"
+            )
+    return reasons
+
+
+def check_spans(path: Path) -> list[str]:
+    """Run A1 + A2 on a span-tree receipt (field-remix-3). Empty list = pass."""
+    records = _load_json_or_jsonl(path)
+    last = records[-1]
+    return assert_span_tree_min(last) + assert_tool_invocation_valid(last)
+
+
+def _load_zero_fixture(path: Path) -> dict[str, Any]:
+    records = _load_json_or_jsonl(path)
+    return records[-1]
+
+
+def _is_early_stall(rec: dict[str, Any], *, min_calls: int) -> bool:
+    count = rec.get("tool_call_count")
+    unique = rec.get("unique_tools")
+    if not isinstance(count, int) or not isinstance(unique, int):
+        return False
+    return count >= min_calls and unique <= 1
+
+
+def _is_late_tool_malform(rec: dict[str, Any]) -> bool:
+    plan_complete = rec.get("plan_complete")
+    valid = rec.get("tool_invocation_valid")
+    if plan_complete is not True:
+        return False
+    if valid is False:
+        return True
+    # Derive from spans if explicit flag absent/true but A2 would fail
+    if "spans" in rec and assert_tool_invocation_valid(rec):
+        return True
+    return False
+
+
+def _zero_correctness(rec: dict[str, Any]) -> bool:
+    c = rec.get("correctness")
+    if c == 0 or c == 0.0:
+        return True
+    if c is False:
+        return True
+    return False
+
+
+def assert_two_zero_split(
+    path_a: Path,
+    path_b: Path,
+    *,
+    min_calls: int = _DEFAULT_EARLY_STALL_MIN_CALLS,
+) -> list[str]:
+    """A3: two correctness=0 fixtures must discriminate early stall vs late tool malform."""
+    reasons: list[str] = []
+    a = _load_zero_fixture(path_a)
+    b = _load_zero_fixture(path_b)
+
+    if not _zero_correctness(a):
+        reasons.append(f"A3 assert_two_zero_split: {path_a.name} correctness != 0")
+    if not _zero_correctness(b):
+        reasons.append(f"A3 assert_two_zero_split: {path_b.name} correctness != 0")
+    if reasons:
+        return reasons
+
+    flags_a = (
+        _is_early_stall(a, min_calls=min_calls),
+        _is_late_tool_malform(a),
+    )
+    flags_b = (
+        _is_early_stall(b, min_calls=min_calls),
+        _is_late_tool_malform(b),
+    )
+
+    has_early = flags_a[0] or flags_b[0]
+    has_late = flags_a[1] or flags_b[1]
+
+    if not has_early:
+        reasons.append(
+            "A3 assert_two_zero_split: missing early-stall fixture "
+            f"(need tool_call_count>={min_calls} AND unique_tools<=1)"
+        )
+    if not has_late:
+        reasons.append(
+            "A3 assert_two_zero_split: missing late-tool-malform fixture "
+            "(need tool_invocation_valid=false after plan_complete)"
+        )
+
+    # Same mode on both = indistinguishable theater
+    if flags_a == flags_b:
+        reasons.append(
+            "A3 assert_two_zero_split: both zeros look identical under det (theater)"
+        )
+    elif flags_a[0] and flags_b[0] and not (flags_a[1] or flags_b[1]):
+        reasons.append(
+            "A3 assert_two_zero_split: both look like early stall — no discrimination"
+        )
+    elif flags_a[1] and flags_b[1] and not (flags_a[0] or flags_b[0]):
+        reasons.append(
+            "A3 assert_two_zero_split: both look like late malform — no discrimination"
+        )
+
+    return reasons
+
+
+def assert_two_zero_split_paths(
+    paths: list[Path],
+    *,
+    min_calls: int = _DEFAULT_EARLY_STALL_MIN_CALLS,
+) -> list[str]:
+    """A3 over a pair, a list, or a directory of correctness=0 fixtures."""
+    expanded: list[Path] = []
+    for p in paths:
+        if p.is_dir():
+            found = sorted(
+                q
+                for q in p.iterdir()
+                if q.suffix.lower() in (".json", ".jsonl") and q.is_file()
+            )
+            # Prefer zero_* fixtures when present
+            zeros = [q for q in found if q.name.startswith("zero_")]
+            expanded.extend(zeros if len(zeros) >= 2 else found)
+        else:
+            expanded.append(p)
+
+    # Dedupe while preserving order
+    seen: set[Path] = set()
+    unique: list[Path] = []
+    for p in expanded:
+        rp = p.resolve()
+        if rp not in seen:
+            seen.add(rp)
+            unique.append(p)
+
+    if len(unique) < 2:
+        return [
+            "A3 assert_two_zero_split: need ≥2 fixtures (pair or directory with zero_*)"
+        ]
+
+    # If more than 2, keep only correctness=0 and require early+late among them
+    if len(unique) > 2:
+        zero_paths: list[Path] = []
+        for p in unique:
+            try:
+                rec = _load_zero_fixture(p)
+            except (OSError, ValueError, json.JSONDecodeError):
+                continue
+            if _zero_correctness(rec):
+                zero_paths.append(p)
+        unique = zero_paths
+
+    if len(unique) < 2:
+        return ["A3 assert_two_zero_split: need ≥2 correctness=0 fixtures"]
+
+    # Pairwise: first two that can form a discriminating pair, else check first two
+    # For hermetic dir with exactly early+late, compare all pairs until one passes
+    reasons_all: list[str] = []
+    for i in range(len(unique)):
+        for j in range(i + 1, len(unique)):
+            reasons = assert_two_zero_split(unique[i], unique[j], min_calls=min_calls)
+            if not reasons:
+                return []
+            reasons_all = reasons
+    return reasons_all or [
+        "A3 assert_two_zero_split: no discriminating early/late pair among fixtures"
+    ]
+
+
 # --- CLI wiring -------------------------------------------------------------
 
 def _run_check(name: str, path: Path, checker) -> int:
@@ -408,7 +751,7 @@ def _run_check(name: str, path: Path, checker) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="homi-gate",
-        description="Fail-closed CI gates: completion bit, handoff, MCP allowlist, tool correctness.",
+        description="Fail-closed CI gates: completion bit, handoff, MCP allowlist, tool correctness, spans (A2E).",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -436,6 +779,30 @@ def main(argv: list[str] | None = None) -> int:
         help="Also require matching args/input for expected tools that declare them (default: names-only)",
     )
 
+    p_spans = sub.add_parser(
+        "check-spans",
+        help="A2E thin det (field-remix-3): A1 span_tree_min + A2 tool_invocation_valid; "
+        "optional --two-zero for A3 early-stall vs late-malform split",
+    )
+    p_spans.add_argument(
+        "paths",
+        type=Path,
+        nargs="*",
+        help="Span receipt JSON/JSONL (A1+A2), or with --two-zero: pair/dir of correctness=0 fixtures",
+    )
+    p_spans.add_argument(
+        "--two-zero",
+        action="store_true",
+        default=False,
+        help="A3 assert_two_zero_split: require early stall vs late tool malform discrimination",
+    )
+    p_spans.add_argument(
+        "--min-calls",
+        type=int,
+        default=_DEFAULT_EARLY_STALL_MIN_CALLS,
+        help=f"A3 early-stall minimum tool_call_count (default {_DEFAULT_EARLY_STALL_MIN_CALLS})",
+    )
+
     args = parser.parse_args(argv)
     if args.command == "check-completion":
         return _run_check("check-completion", args.path, check_completion)
@@ -449,6 +816,31 @@ def main(argv: list[str] | None = None) -> int:
             args.path,
             lambda p: check_tools(p, exact_args=args.exact_args),
         )
+    if args.command == "check-spans":
+        if args.two_zero:
+            if not args.paths:
+                print("FAIL check-spans: --two-zero requires path(s) or a directory", file=sys.stderr)
+                return 1
+            try:
+                reasons = assert_two_zero_split_paths(args.paths, min_calls=args.min_calls)
+            except (OSError, ValueError, json.JSONDecodeError, RuntimeError) as exc:
+                print(f"FAIL check-spans --two-zero: {exc}", file=sys.stderr)
+                return 1
+            label = " ".join(str(p) for p in args.paths)
+            if reasons:
+                print(f"FAIL check-spans --two-zero (A3): {label}", file=sys.stderr)
+                for r in reasons:
+                    print(f"  - {r}", file=sys.stderr)
+                return 1
+            print(f"PASS check-spans --two-zero (A3): {label}")
+            return 0
+        if len(args.paths) != 1:
+            print(
+                "FAIL check-spans: provide exactly one span receipt (or use --two-zero)",
+                file=sys.stderr,
+            )
+            return 1
+        return _run_check("check-spans", args.paths[0], check_spans)
     parser.error(f"unknown command: {args.command}")
     return 2
 
