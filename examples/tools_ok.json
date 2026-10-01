@@ -1,0 +1,7 @@
+{
+  "run_id": "tools-pass-001",
+  "field_remix": "tool-correctness",
+  "tools_called": ["search_docs", "read_file", "write_receipt"],
+  "expected_tools": ["search_docs", "read_file", "write_receipt"],
+  "notes": "exact expected set — names-only pass (hermetic)"
+}

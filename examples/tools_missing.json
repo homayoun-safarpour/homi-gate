@@ -1,0 +1,7 @@
+{
+  "run_id": "tools-fail-missing-001",
+  "field_remix": "tool-correctness",
+  "tools_called": ["search_docs"],
+  "expected_tools": ["search_docs", "read_file", "write_receipt"],
+  "notes": "missing required tools: read_file, write_receipt"
+}

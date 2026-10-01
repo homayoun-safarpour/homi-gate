@@ -1,10 +1,11 @@
-"""homi-gate CLI — fail-closed checks for completion, handoff, MCP allowlist."""
+"""homi-gate CLI — fail-closed checks for completion, handoff, MCP allowlist, tool correctness."""
 
 from __future__ import annotations
 
 import argparse
 import json
 import sys
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +20,25 @@ _INCOMPLETE_STATUSES = frozenset(
     {"truncated", "incomplete", "error", "failed", "running", "aborted"}
 )
 _COMPLETE_STATUSES = frozenset({"completed", "complete", "success", "ok", "done"})
+_ARTIFACT_KEYS = (
+    "artifact",
+    "artifact_path",
+    "proof",
+    "proof_path",
+    "evidence",
+    "evidence_path",
+)
+
+
+def _has_artifact_or_proof(rec: dict[str, Any]) -> bool:
+    """True when receipt carries a non-empty artifact/proof/evidence path or payload."""
+    for key in _ARTIFACT_KEYS:
+        val = rec.get(key)
+        if isinstance(val, str) and val.strip():
+            return True
+        if isinstance(val, (list, dict)) and len(val) > 0:
+            return True
+    return False
 
 
 def _load_json_or_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -63,22 +83,31 @@ def check_completion(path: Path) -> list[str]:
         reasons.append("truncated=true on final record")
 
     bit = last.get("completion_bit", last.get("complete"))
+    status = last.get("status")
+    status_l = str(status).lower() if status is not None else None
+
     if bit is False:
         reasons.append("completion_bit=false")
     elif bit is None:
-        status = last.get("status")
         if status is None:
             reasons.append("missing completion_bit/complete and status")
-        else:
-            status_l = str(status).lower()
-            if status_l in _INCOMPLETE_STATUSES:
-                reasons.append(f"status={status!r} is incomplete")
-            elif status_l not in _COMPLETE_STATUSES:
-                reasons.append(f"status={status!r} not a known complete status")
+        elif status_l in _INCOMPLETE_STATUSES:
+            reasons.append(f"status={status!r} is incomplete")
+        elif status_l not in _COMPLETE_STATUSES:
+            reasons.append(f"status={status!r} not a known complete status")
     elif bit is not True:
         reasons.append(f"completion_bit must be bool, got {type(bit).__name__}")
 
-    # Mid-stream truncate flag also fails closed
+    # Soft DONE: claiming complete (bit or known status) requires artifact/proof path
+    claims_complete = bit is True or (
+        bit is None and status_l in _COMPLETE_STATUSES
+    )
+    if claims_complete and not _has_artifact_or_proof(last):
+        reasons.append(
+            "soft DONE: complete/DONE without proof_path/evidence_path/artifact"
+        )
+
+    # Mid-stream truncate flag stream-vetoes a later green final (not final-record-wins)
     for i, rec in enumerate(records):
         if rec.get("truncated") is True and i < len(records) - 1:
             reasons.append(f"record[{i}] truncated=true before final record")
@@ -134,6 +163,17 @@ def check_handoff(path: Path) -> list[str]:
     # Explicit anti-pattern from hire signals: context:null with no substitute
     if "context" in payload and payload["context"] is None:
         reasons.append("context is null (pass compact proved/pending/stop instead)")
+    # Soft-null coerce: empty {} / [] keeps dashboards green (RD-G / CRED-1 score theater)
+    elif "context" in payload and isinstance(payload["context"], (dict, list)) and len(payload["context"]) == 0:
+        reasons.append(
+            "context is empty (soft-null coerce); pass compact proved/pending/stop instead"
+        )
+
+    # Nested context:null (report/transcript wrappers from transcript-dump handoffs)
+    for nest_key in ("report", "transcript", "payload"):
+        nest = payload.get(nest_key)
+        if isinstance(nest, dict) and "context" in nest and nest["context"] is None:
+            reasons.append(f"{nest_key}.context is null (nested)")
 
     # pending must be a single goal string, not a dump
     pending = payload.get("pending")
@@ -212,6 +252,142 @@ def check_mcp_allowlist(path: Path) -> list[str]:
     return reasons
 
 
+
+# --- tool correctness (field-remix: DeepEval ToolCorrectness det-first + Promptfoo hermetic mocks) ---
+
+_EXPECTED_TOOL_KEYS = ("expected_tools", "expected", "expected_allowlist")
+_CALLED_TOOL_KEYS = ("tools_called", "tools", "tool_calls")
+
+
+def _tool_name(entry: Any) -> str | None:
+    """Normalize a tools_called / expected_tools entry to a tool name."""
+    if isinstance(entry, str):
+        name = entry.strip()
+        return name or None
+    if isinstance(entry, dict):
+        for key in ("name", "tool", "tool_name", "function"):
+            val = entry.get(key)
+            if isinstance(val, str) and val.strip():
+                return val.strip()
+            # OpenAI-style {"function": {"name": "..."}}
+            if key == "function" and isinstance(val, dict):
+                nested = val.get("name")
+                if isinstance(nested, str) and nested.strip():
+                    return nested.strip()
+        return None
+    return None
+
+
+def _tool_args(entry: Any) -> Any:
+    """Return args/input payload when entry is an object; None for bare names."""
+    if not isinstance(entry, dict):
+        return None
+    for key in ("args", "arguments", "input", "input_parameters", "params"):
+        if key in entry:
+            return entry[key]
+    fn = entry.get("function")
+    if isinstance(fn, dict) and "arguments" in fn:
+        return fn["arguments"]
+    return None
+
+
+def _extract_tool_list(rec: dict[str, Any], keys: tuple[str, ...]) -> tuple[list[Any] | None, str | None]:
+    """Return (list_or_None, key_used). None list means key absent."""
+    for key in keys:
+        if key in rec:
+            return rec[key], key
+    return None, None
+
+
+def check_tools(path: Path, *, exact_args: bool = False) -> list[str]:
+    """Compare tools_called vs expected_tools deterministically (wrong-tool=0).
+
+    Names-only by default. With exact_args=True, also require matching args/input
+    for each expected tool occurrence. No LLM in the loop.
+    """
+    records = _load_json_or_jsonl(path)
+    last = records[-1]
+    reasons: list[str] = []
+
+    called_raw, called_key = _extract_tool_list(last, _CALLED_TOOL_KEYS)
+    expected_raw, expected_key = _extract_tool_list(last, _EXPECTED_TOOL_KEYS)
+
+    if called_raw is None:
+        reasons.append("missing tools_called (or tools / tool_calls)")
+    elif not isinstance(called_raw, list):
+        reasons.append(f"{called_key} must be a list, got {type(called_raw).__name__}")
+
+    if expected_raw is None:
+        reasons.append("missing expected_tools (or expected / expected_allowlist)")
+    elif not isinstance(expected_raw, list):
+        reasons.append(f"{expected_key} must be a list, got {type(expected_raw).__name__}")
+    elif len(expected_raw) == 0:
+        # claim asserts tools (tools_called present) or expected key exists empty
+        reasons.append(
+            "empty expected_tools when claim asserts tools — fail-closed (no judge-alone green)"
+        )
+
+    if reasons:
+        return reasons
+
+    assert isinstance(called_raw, list) and isinstance(expected_raw, list)
+
+    called_names: list[str] = []
+    for i, entry in enumerate(called_raw):
+        name = _tool_name(entry)
+        if name is None:
+            reasons.append(f"tools_called[{i}] has no usable tool name")
+        else:
+            called_names.append(name)
+
+    expected_names: list[str] = []
+    for i, entry in enumerate(expected_raw):
+        name = _tool_name(entry)
+        if name is None:
+            reasons.append(f"expected_tools[{i}] has no usable tool name")
+        else:
+            expected_names.append(name)
+
+    if reasons:
+        return reasons
+
+    called_set = set(called_names)
+    expected_set = set(expected_names)
+
+    unexpected = sorted(called_set - expected_set)
+    missing = sorted(expected_set - called_set)
+
+    if unexpected:
+        reasons.append(f"unexpected tools (wrong-tool=0): {unexpected}")
+    if missing:
+        reasons.append(f"missing required tools: {missing}")
+
+    if exact_args and not unexpected and not missing:
+        # Multiset match by name+args for expected entries that carry args
+        def _sig(entry: Any) -> tuple[str, str]:
+            name = _tool_name(entry) or ""
+            args = _tool_args(entry)
+            # Canonical JSON for stable compare; bare-name expected skips args check
+            if args is None:
+                return name, ""
+            return name, json.dumps(args, sort_keys=True, default=str)
+
+        # Only enforce args when expected entry provides them
+        expected_with_args = [e for e in expected_raw if _tool_args(e) is not None]
+        if expected_with_args:
+            called_counter = Counter(_sig(e) for e in called_raw)
+            for entry in expected_with_args:
+                sig = _sig(entry)
+                if called_counter[sig] <= 0:
+                    reasons.append(
+                        f"exact-args mismatch: expected {sig[0]} with args {sig[1]} not found in tools_called"
+                    )
+                else:
+                    called_counter[sig] -= 1
+
+    return reasons
+
+
 # --- CLI wiring -------------------------------------------------------------
 
 def _run_check(name: str, path: Path, checker) -> int:
@@ -232,7 +408,7 @@ def _run_check(name: str, path: Path, checker) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="homi-gate",
-        description="Fail-closed CI gates: completion bit, handoff contracts, MCP allowlist.",
+        description="Fail-closed CI gates: completion bit, handoff, MCP allowlist, tool correctness.",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -248,6 +424,18 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_mcp.add_argument("path", type=Path, help="YAML or JSON MCP toolset config")
 
+    p_tools = sub.add_parser(
+        "check-tools",
+        help="Fail if tools_called vs expected_tools mismatches (wrong-tool=0; field-remix)",
+    )
+    p_tools.add_argument("path", type=Path, help="JSON or JSONL tool-call receipt")
+    p_tools.add_argument(
+        "--exact-args",
+        action="store_true",
+        default=False,
+        help="Also require matching args/input for expected tools that declare them (default: names-only)",
+    )
+
     args = parser.parse_args(argv)
     if args.command == "check-completion":
         return _run_check("check-completion", args.path, check_completion)
@@ -255,6 +443,12 @@ def main(argv: list[str] | None = None) -> int:
         return _run_check("check-handoff", args.path, check_handoff)
     if args.command == "check-mcp-allowlist":
         return _run_check("check-mcp-allowlist", args.path, check_mcp_allowlist)
+    if args.command == "check-tools":
+        return _run_check(
+            "check-tools",
+            args.path,
+            lambda p: check_tools(p, exact_args=args.exact_args),
+        )
     parser.error(f"unknown command: {args.command}")
     return 2
 
