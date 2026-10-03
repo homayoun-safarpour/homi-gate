@@ -1,0 +1,20 @@
+{
+  "proposed": {
+    "name": "update_passengers",
+    "args": {
+      "count": 3
+    },
+    "write": true
+  },
+  "state": {
+    "count": 2
+  },
+  "rules": [
+    {
+      "tool": "update_passengers",
+      "deny_if": {
+        "unchanged": "count"
+      }
+    }
+  ]
+}
