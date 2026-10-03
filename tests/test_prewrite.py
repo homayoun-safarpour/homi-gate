@@ -69,6 +69,12 @@ def test_uncovered_write_fails_and_judge_does_not_override():
     assert main(["check-prewrite", str(EXAMPLES / "prewrite_uncovered.json")]) == 1
 
 
+def test_covering_rule_missing_deny_if_fails():
+    reasons = check_prewrite(EXAMPLES / "prewrite_missing_deny_if.json")
+    assert any("missing deny_if" in r for r in reasons)
+    assert main(["check-prewrite", str(EXAMPLES / "prewrite_missing_deny_if.json")]) == 1
+
+
 def test_state_not_mutated():
     payload = {
         "proposed": {"name": "cancel_reservation", "write": True, "args": {"id": "R1"}},
