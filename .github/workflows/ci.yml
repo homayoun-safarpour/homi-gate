@@ -70,3 +70,4 @@ jobs:
           ! homi-gate check-prewrite examples/prewrite_missing_rules.json
           ! homi-gate check-prewrite examples/prewrite_count_change.json
           ! homi-gate check-prewrite examples/prewrite_judge_only.json
+          ! homi-gate check-prewrite examples/prewrite_uncovered.json
