@@ -1,7 +1,7 @@
 """field-remix-4 / AgentEvals trajectory match, det slice (no LLM).
 
-Modes follow https://docs.langchain.com/oss/python/langchain/test/evals
-and keep order: strict (equal), subset (no extras), superset (extras allowed).
+Modes follow https://docs.langchain.com/oss/python/langchain/test/evals:
+strict is ordered; subset/superset are order-free bags (AgentEvals primary).
 """
 
 from pathlib import Path
@@ -15,7 +15,7 @@ def test_strict_pass():
     assert check_trajectory(EXAMPLES / "trajectory_strict_ok.json", mode="strict") == []
 
 
-def test_equal_trajectory_passes_every_ordered_mode():
+def test_equal_trajectory_passes_every_mode():
     path = EXAMPLES / "trajectory_strict_ok.json"
     for mode in ("strict", "subset", "superset"):
         assert check_trajectory(path, mode=mode) == [], mode
@@ -52,11 +52,13 @@ def test_superset_fail_missing_expected():
     assert "authorize" in joined
 
 
-def test_reorder_fails_strict_subset_and_superset():
+def test_reorder_fails_strict_only():
+    """AgentEvals subset/superset ignore order; only strict fails a swap."""
     path = EXAMPLES / "trajectory_reorder.json"
-    for mode in ("strict", "subset", "superset"):
-        text = " ".join(check_trajectory(path, mode=mode))
-        assert "reorder" in text, mode
+    text = " ".join(check_trajectory(path, mode="strict"))
+    assert "reorder" in text
+    assert check_trajectory(path, mode="subset") == []
+    assert check_trajectory(path, mode="superset") == []
 
 
 def test_judge_only_does_not_pass():

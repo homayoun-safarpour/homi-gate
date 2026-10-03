@@ -735,12 +735,12 @@ def assert_two_zero_split_paths(
 # --- trajectory match (field-remix-4 / AgentEvals det slice) ----------------
 # Primary (opened 2026-10-03):
 #   https://docs.langchain.com/oss/python/langchain/test/evals
-# Modes match that page, and this gate also requires order:
-#   strict:   actual == expected (extra, missing, or reorder fails)
-#   subset:   every actual call is in expected, in order; no extras
-#             (a shorter actual is allowed — agent did not exceed scope)
-#   superset: every expected call appears in actual, in order; extras allowed
-# unordered is not shipped. No LLM judge.
+# Mode names + semantics match AgentEvals / LangSmith trajectory docs:
+#   strict:   actual == expected (same calls, same order; extra/missing/reorder fail)
+#   subset:   every actual call is in expected (bag); no extras; order ignored
+#   superset: every expected call appears in actual (bag); extras allowed; order ignored
+# unordered (equal bags either direction) is not shipped. No LLM judge.
+# Ref impl: langchain-ai/agentevals trajectory/_is_trajectory_superset (order-free).
 
 _TRAJECTORY_MODES = frozenset({"strict", "subset", "superset"})
 _EXPECTED_TRAJ_KEYS = ("expected", "reference", "reference_outputs")
@@ -763,24 +763,13 @@ def _call_pin(entry: Any) -> tuple[str, str | None] | None:
     return name, _canonical_args(args)
 
 
-def _calls_match(expected: tuple[str, str | None], actual: tuple[str, str | None]) -> bool:
-    if expected[0] != actual[0]:
+def _calls_match(needle: tuple[str, str | None], hay: tuple[str, str | None]) -> bool:
+    """Needle vs haystack call. Name must match; None needle args = name-only."""
+    if needle[0] != hay[0]:
         return False
-    if expected[1] is None:
+    if needle[1] is None:
         return True
-    return expected[1] == actual[1]
-
-
-def _as_subsequence(expected: list[tuple[str, str | None]], actual: list[tuple[str, str | None]]) -> bool:
-    """True when every expected call appears in actual, in order. Extras allowed (superset)."""
-    j = 0
-    for exp in expected:
-        while j < len(actual) and not _calls_match(exp, actual[j]):
-            j += 1
-        if j == len(actual):
-            return False
-        j += 1
-    return True
+    return needle[1] == hay[1]
 
 
 def _fmt_call(pin: tuple[str, str | None]) -> str:
@@ -789,79 +778,54 @@ def _fmt_call(pin: tuple[str, str | None]) -> str:
     return f"{pin[0]}{pin[1]}"
 
 
-def _superset_breaks(
-    expected: list[tuple[str, str | None]],
-    actual: list[tuple[str, str | None]],
-    exp_s: list[str],
+def _bag_covers(
+    haystack: list[tuple[str, str | None]],
+    needles: list[tuple[str, str | None]],
+) -> bool:
+    """True when every needle finds an unused matching call in haystack (AgentEvals-style)."""
+    used: set[int] = set()
+    for needle in needles:
+        found = False
+        for i, hay in enumerate(haystack):
+            if i in used:
+                continue
+            if _calls_match(needle, hay):
+                used.add(i)
+                found = True
+                break
+        if not found:
+            return False
+    return True
+
+
+def _bag_unmatched(
+    haystack: list[tuple[str, str | None]],
+    needles: list[tuple[str, str | None]],
+    labels: list[str],
 ) -> list[str]:
-    """Labels for expected calls that are missing or out of order in actual."""
-    j = 0
-    broken: list[str] = []
-    for exp, label in zip(expected, exp_s):
-        k = j
-        while k < len(actual) and not _calls_match(exp, actual[k]):
-            k += 1
-        if k < len(actual):
-            j = k + 1
-            continue
-        earlier = any(_calls_match(exp, actual[t]) for t in range(j))
-        if earlier:
-            broken.append(f"reorder:{label}")
-        else:
-            broken.append(f"missing:{label}")
-    return broken
-
-
-def _subset_breaks(
-    expected: list[tuple[str, str | None]],
-    actual: list[tuple[str, str | None]],
-    act_s: list[str],
-) -> list[str]:
-    """Labels for actual calls that are extras or out of order vs expected.
-
-    Empty means actual is an order-preserving subsequence of expected (no extras).
-    Missing expected calls are allowed.
-    """
-    i = 0
-    consumed: set[int] = set()
-    broken: list[str] = []
-    for act, label in zip(actual, act_s):
-        k = i
-        while k < len(expected) and not _calls_match(expected[k], act):
-            k += 1
-        if k < len(expected):
-            consumed.add(k)
-            i = k + 1
-            continue
-        skipped = any(
-            t not in consumed and _calls_match(expected[t], act) for t in range(i)
-        )
-        if skipped:
-            broken.append(f"reorder:{label}")
-        else:
-            broken.append(f"extra:{label}")
-    return broken
-
-
-def _format_breaks(mode: str, broken: list[str], act_s: list[str], exp_s: list[str]) -> list[str]:
-    if any(b.startswith("extra:") for b in broken):
-        kind = "extra tool call(s)"
-        detail = [b.split(":", 1)[1] for b in broken if b.startswith("extra:")]
-    elif any(b.startswith("reorder:") for b in broken):
-        kind = "reorder"
-        detail = [b.split(":", 1)[1] for b in broken if b.startswith("reorder:")]
-    else:
-        kind = "missing expected tool call(s)"
-        detail = [b.split(":", 1)[1] for b in broken]
-    return [f"{mode}: {kind}: {detail}; actual {act_s} expected {exp_s}"]
+    """Labels of needles that could not be matched into haystack."""
+    used: set[int] = set()
+    missing: list[str] = []
+    for needle, label in zip(needles, labels):
+        found = False
+        for i, hay in enumerate(haystack):
+            if i in used:
+                continue
+            if _calls_match(needle, hay):
+                used.add(i)
+                found = True
+                break
+        if not found:
+            missing.append(label)
+    return missing
 
 
 def check_trajectory(path: Path, *, mode: str) -> list[str]:
     """Deterministic expected-vs-actual tool trajectory. No judge, no network.
 
     strict: same calls, same order, no extras.
-    subset: every actual call is in expected, in order; no extras.
-    superset: every expected call appears in actual, in order; extras allowed.
+    subset: every actual call is in expected as a bag; extras fail; order ignored.
+    superset: every expected call appears in actual as a bag; extras allowed; order ignored.
     A judge/score field never authorizes a pass.
     """
     if mode not in _TRAJECTORY_MODES:
@@ -920,7 +884,6 @@ def check_trajectory(path: Path, *, mode: str) -> list[str]:
 
     exp_s = [_fmt_call(c) for c in expected]
     act_s = [_fmt_call(c) for c in actual]
-    superset_ok = _as_subsequence(expected, actual)
 
     if mode == "strict":
         pairwise = len(expected) == len(actual) and all(
@@ -928,39 +891,40 @@ def check_trajectory(path: Path, *, mode: str) -> list[str]:
         )
         if pairwise:
             return []
-        if superset_ok and len(actual) > len(expected):
+        # Same bag, different order → reorder (still fail strict)
+        if len(expected) == len(actual) and _bag_covers(actual, expected) and _bag_covers(
+            expected, actual
+        ):
+            return [f"strict: reorder; actual {act_s} != expected {exp_s}"]
+        if _bag_covers(actual, expected) and len(actual) > len(expected):
             return [
                 "strict: extra tool call(s); actual "
                 f"{act_s} != expected {exp_s}"
             ]
-        if len(expected) == len(actual) and sorted(exp_s) == sorted(act_s):
-            return [
-                f"strict: reorder; actual {act_s} != expected {exp_s}"
-            ]
-        if not superset_ok:
-            broken = _superset_breaks(expected, actual, exp_s)
-            missing = [b.split(":", 1)[1] for b in broken if b.startswith("missing:")]
-            if any(b.startswith("reorder:") for b in broken) and len(actual) >= len(expected):
-                return [
-                    f"strict: reorder or mismatch; missing in order {missing or exp_s}; "
-                    f"actual {act_s} != expected {exp_s}"
-                ]
-            return [
-                f"strict: missing expected tool call(s) {missing or exp_s}; "
-                f"actual {act_s}"
-            ]
-        return [f"strict: trajectory mismatch; actual {act_s} != expected {exp_s}"]
+        missing = _bag_unmatched(actual, expected, exp_s)
+        return [
+            f"strict: missing expected tool call(s) {missing or exp_s}; "
+            f"actual {act_s}"
+        ]
 
     if mode == "superset":
-        if superset_ok:
+        # AgentEvals: outputs ⊇ reference (order-free bag cover)
+        if _bag_covers(actual, expected):
             return []
-        return _format_breaks("superset", _superset_breaks(expected, actual, exp_s), act_s, exp_s)
+        missing = _bag_unmatched(actual, expected, exp_s)
+        return [
+            f"superset: missing expected tool call(s): {missing}; "
+            f"actual {act_s} expected {exp_s}"
+        ]
 
-    # subset: no extras; actual is an ordered subsequence of expected
-    broken = _subset_breaks(expected, actual, act_s)
-    if not broken:
+    # subset: AgentEvals outputs ⊆ reference (order-free; extras fail)
+    if _bag_covers(expected, actual):
         return []
-    return _format_breaks("subset", broken, act_s, exp_s)
+    extras = _bag_unmatched(expected, actual, act_s)
+    return [
+        f"subset: extra tool call(s): {extras}; "
+        f"actual {act_s} expected {exp_s}"
+    ]
 
 
 # --- CLI wiring -------------------------------------------------------------
