@@ -1,0 +1,2 @@
+{"event":"partial","run_id":"synth-doppel-1","status":"truncated","completion_bit":false,"truncated":true,"notes":"mid-stream truncate — must veto even if a later green record appears"}
+{"event":"end","run_id":"synth-doppel-1","status":"completed","completion_bit":true,"truncated":false,"proof_path":"artifacts/synth-doppel-1/out.txt","notes":"final-record-wins trap bait — green final must not override earlier truncate"}

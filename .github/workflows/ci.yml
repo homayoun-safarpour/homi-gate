@@ -49,7 +49,11 @@ jobs:
           set -euo pipefail
           # Each must exit non-zero; `!` inverts so the step stays green when gates fail correctly
           ! homi-gate check-completion examples/fail.json
+          ! homi-gate check-completion examples/soft_done_no_artifact.json
+          ! homi-gate check-completion examples/doppelganger.jsonl
           ! homi-gate check-handoff examples/handoff_bad.json
+          ! homi-gate check-handoff examples/handoff_soft_null_coerce.json
+          ! homi-gate check-handoff examples/handoff_transcript_dump.json
           ! homi-gate check-mcp-allowlist examples/mcp_bad.yaml
           ! homi-gate check-tools examples/tools_wrong.json
           ! homi-gate check-spans examples/span_missing_tool.json

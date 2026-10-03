@@ -1,4 +1,4 @@
 {"event": "start", "run_id": "synth-jsonl-1"}
 {"event": "step", "name": "retrieve"}
 {"event": "step", "name": "answer"}
-{"event": "end", "status": "completed", "completion_bit": true, "truncated": false}
+{"event": "end", "status": "completed", "completion_bit": true, "truncated": false, "proof_path": "artifacts/synth-jsonl-1.json"}

@@ -1,0 +1,20 @@
+{
+  "from_agent": "worker-a",
+  "to_agent": "worker-b",
+  "pending": "Okay so here is the full chat dump the previous worker left me:\n\nUSER: do the thing\nASSISTANT: sure working on it...\n\nUSER: do the thing\nASSISTANT: sure working on it...\n\nUSER: do the thing\nASSISTANT: sure working on it...\n\nUSER: do the thing\nASSISTANT: sure working on it...\n\nUSER: do the thing\nASSISTANT: sure working on it...\n\nUSER: do the thing\nASSISTANT: sure working on it...\n\nUSER: do the thing\nASSISTANT: sure working on it...\n\nUSER: do the thing\nASSISTANT: sure working on it...\n\nUSER: do the thing\nASSISTANT: sure working on it...\n\nUSER: do the thing\nASSISTANT: sure working on it...\n\nUSER: do the thing\nASSISTANT: sure working on it...\n\nUSER: do the thing\nASSISTANT: sure working on it...\n\nUSER: do the thing\nASSISTANT: sure working on it...\n\nUSER: do the thing\nASSISTANT: sure working on it...\n\nUSER: do the thing\nASSISTANT: sure working on it...\n\nUSER: do the thing\nASSISTANT: sure working on it...\n\nUSER: do the thing\nASSISTANT: sure working on it...\n\nUSER: do the thing\nASSISTANT: sure working on it...\n\nUSER: do the thing\nASSISTANT: sure working on it...\n\nUSER: do the thing\nASSISTANT: sure working on it...\n\nUSER: are you done?\nASSISTANT: yeah I think so, just paste this whole thread to the next agent.\n\nAlso I lost the stop criteria somewhere above. Good luck.",
+  "context": null,
+  "transcript": {
+    "messages": [
+      {
+        "role": "user",
+        "content": "do the thing"
+      },
+      {
+        "role": "assistant",
+        "content": "sure working on it..."
+      }
+    ],
+    "context": null
+  },
+  "notes": "transcript dump as handoff \u2014 missing slots + nested context null"
+}
