@@ -114,13 +114,13 @@ Pattern from [Autonoma — How to run LLM evals in CI/CD](https://getautonoma.co
 
 ## Composition
 
-Use this **beside** full eval stacks (Promptfoo, DeepEval, Ragas, judge harnesses). Those score quality and trajectories. This only fails closed on completion, handoff, MCP, tool-call, and span/two-zero contract shapes. It does not replace Stop-hook tools, LangSmith, or human review.
+Use this **beside** full eval stacks (Promptfoo, DeepEval, Ragas, judge harnesses). Those score quality and trajectories. This only fails closed on completion, handoff, MCP, tool-call, span/two-zero, and trajectory contract shapes. It does not replace Stop-hook tools, LangSmith, or human review.
 
 ### Optional: Promptfoo quality evals (beside Homi Gate)
 
 Contracts stay here. For prompt/agent **quality** in CI, add Promptfoo with **deterministic** asserts (`not-contains` / `is-json` / trajectory tool checks) and `--fail-on-error` — never LLM-rubric alone for green. See Promptfoo [CI/CD](https://www.promptfoo.dev/docs/integrations/ci-cd/) + [asserts](https://www.promptfoo.dev/docs/configuration/expected-outputs/). Companion trajectory match: LangChain AgentEvals (Course 031).
 
-Then still run Homi Gate on receipts (completion · handoff · MCP).
+Then still run Homi Gate on receipts (completion · handoff · MCP · tools · spans · trajectory).
 
 
 
