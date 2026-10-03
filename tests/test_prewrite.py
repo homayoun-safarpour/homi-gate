@@ -115,3 +115,7 @@ def test_rule_not_object_fails():
     assert any("must be an object" in r for r in reasons)
     assert main(["check-prewrite", str(EXAMPLES / "prewrite_rule_not_object.json")]) == 1
 
+def test_proposed_args_not_object_fails():
+    reasons = check_prewrite(EXAMPLES / "prewrite_args_not_object.json")
+    assert any("proposed.args must be an object" in r for r in reasons)
+    assert main(["check-prewrite", str(EXAMPLES / "prewrite_args_not_object.json")]) == 1
