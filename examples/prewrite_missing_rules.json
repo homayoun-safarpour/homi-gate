@@ -1,0 +1,10 @@
+{
+  "proposed": {
+    "name": "cancel_reservation",
+    "args": {},
+    "write": true
+  },
+  "state": {
+    "refundable": false
+  }
+}
