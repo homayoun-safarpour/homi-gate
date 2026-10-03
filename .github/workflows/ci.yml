@@ -61,6 +61,7 @@ jobs:
           ! homi-gate check-spans examples/tool_malform.json
           ! homi-gate check-trajectory --mode strict examples/trajectory_strict_extra.json
           ! homi-gate check-trajectory --mode strict examples/trajectory_reorder.json
+          ! homi-gate check-trajectory --mode strict examples/trajectory_missing_expected.json
           ! homi-gate check-trajectory --mode subset examples/trajectory_strict_extra.json
           ! homi-gate check-trajectory --mode superset examples/trajectory_missing_expected.json
           ! homi-gate check-trajectory --mode strict examples/trajectory_judge_only.json
