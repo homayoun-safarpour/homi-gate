@@ -78,3 +78,4 @@ jobs:
           ! homi-gate check-prewrite examples/prewrite_missing_name.json
           ! homi-gate check-prewrite examples/prewrite_rules_not_list.json
           ! homi-gate check-prewrite examples/prewrite_missing_tool.json
+          ! homi-gate check-prewrite examples/prewrite_rule_not_object.json

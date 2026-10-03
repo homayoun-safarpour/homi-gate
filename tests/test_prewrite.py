@@ -110,3 +110,8 @@ def test_rule_tool_missing_fails():
     assert any("tool missing" in r for r in reasons)
     assert main(["check-prewrite", str(EXAMPLES / "prewrite_missing_tool.json")]) == 1
 
+def test_rule_not_object_fails():
+    reasons = check_prewrite(EXAMPLES / "prewrite_rule_not_object.json")
+    assert any("must be an object" in r for r in reasons)
+    assert main(["check-prewrite", str(EXAMPLES / "prewrite_rule_not_object.json")]) == 1
+
