@@ -1,4 +1,4 @@
-"""homi-gate CLI — fail-closed checks for completion, handoff, MCP allowlist, tool correctness, spans (A2E), trajectory."""
+"""homi-gate CLI — fail-closed checks for completion, handoff, MCP allowlist, tool correctness, spans (A2E), trajectory, prewrite."""
 
 from __future__ import annotations
 
@@ -927,6 +927,124 @@ def check_trajectory(path: Path, *, mode: str) -> list[str]:
     ]
 
 
+# --- prewrite (before the write; declarative, no LLM) -------------------
+# Grades a PROPOSED tool call against rules before any mutation.
+# deny_if supports only: eq, ne, unchanged (field), forbidden (field).
+# Missing rules, or a write with no covering rule, fails closed.
+# Judge score / "looks good" / status=done never authorizes a pass.
+
+def _path_get(obj: Any, dotted: str) -> tuple[bool, Any]:
+    """Read a dotted field. Does not create or assign (state stays read-only)."""
+    cur: Any = obj
+    for part in dotted.split("."):
+        if not isinstance(cur, dict) or part not in cur:
+            return False, None
+        cur = cur[part]
+    return True, cur
+
+
+def _resolve_operand(token: Any, state: dict[str, Any], args: dict[str, Any]) -> tuple[bool, Any]:
+    """Literals stay literals. Only state.* and args.* strings are paths."""
+    if isinstance(token, str) and token.startswith("state."):
+        return _path_get(state, token[len("state.") :])
+    if isinstance(token, str) and token.startswith("args."):
+        return _path_get(args, token[len("args.") :])
+    return True, token
+
+
+def _deny_fires(cond: Any, state: dict[str, Any], args: dict[str, Any]) -> tuple[bool, str]:
+    """True means the proposed call is denied. Unknown shapes fail closed."""
+    if not isinstance(cond, dict) or len(cond) != 1:
+        return True, "deny_if must be one of eq, ne, unchanged, forbidden"
+    key, val = next(iter(cond.items()))
+    if key in ("eq", "ne"):
+        if not isinstance(val, list) or len(val) != 2:
+            return True, f"{key} expects [left, right]"
+        ok_l, left = _resolve_operand(val[0], state, args)
+        ok_r, right = _resolve_operand(val[1], state, args)
+        if not ok_l or not ok_r:
+            return True, f"{key} path missing — fail-closed"
+        fired = left == right if key == "eq" else left != right
+        if fired:
+            return True, f"{key} {val[0]!r} vs {val[1]!r}"
+        return False, ""
+    if key == "unchanged":
+        if not isinstance(val, str) or not val.strip():
+            return True, "unchanged expects a field name"
+        field = val.strip()
+        ok_a, a = _path_get(args, field)
+        ok_s, s = _path_get(state, field)
+        if ok_a != ok_s or (ok_a and a != s):
+            return True, f"field {field} changed"
+        return False, ""
+    if key == "forbidden":
+        if not isinstance(val, str) or not val.strip():
+            return True, "forbidden expects a field name"
+        field = val.strip()
+        ok_a, _ = _path_get(args, field)
+        if ok_a:
+            return True, f"forbidden field {field}"
+        return False, ""
+    return True, f"unsupported deny_if {key!r} — fail-closed"
+
+
+def evaluate_prewrite(payload: dict[str, Any]) -> list[str]:
+    """Return failure reasons (empty = allow). Does not mutate payload or state."""
+    if not isinstance(payload, dict):
+        return ["prewrite receipt must be an object"]
+    proposed = payload.get("proposed")
+    if not isinstance(proposed, dict):
+        return [
+            "missing proposed call (judge score, looks good, or status=done is not a gate)"
+        ]
+    name = proposed.get("name")
+    if not isinstance(name, str) or not name.strip():
+        return ["proposed.name missing — fail-closed"]
+    name = name.strip()
+    args = proposed.get("args", {})
+    if args is None:
+        args = {}
+    if not isinstance(args, dict):
+        return ["proposed.args must be an object"]
+    state = payload.get("state", {})
+    if state is None:
+        state = {}
+    if not isinstance(state, dict):
+        return ["state must be an object"]
+    if "rules" not in payload or payload["rules"] is None:
+        return ["missing rules — fail-closed"]
+    rules = payload["rules"]
+    if not isinstance(rules, list):
+        return ["rules must be a list — fail-closed"]
+
+    is_write = proposed.get("write", True) is not False
+    covered = False
+    reasons: list[str] = []
+    for i, rule in enumerate(rules):
+        if not isinstance(rule, dict):
+            return [f"rules[{i}] must be an object — fail-closed"]
+        tool = rule.get("tool")
+        if not isinstance(tool, str) or not tool.strip():
+            return [f"rules[{i}].tool missing — fail-closed"]
+        if tool.strip() != name:
+            continue
+        covered = True
+        if "deny_if" not in rule:
+            return [f"rules[{i}] missing deny_if — fail-closed"]
+        fired, why = _deny_fires(rule["deny_if"], state, args)
+        if fired:
+            reasons.append(f"deny {name}: {why}")
+    if is_write and not covered:
+        reasons.append(f"write tool {name} has no covering rule — fail-closed")
+    return reasons
+
+
+def check_prewrite(path: Path) -> list[str]:
+    """Grade the last receipt record before a write. No LLM."""
+    records = _load_json_or_jsonl(path)
+    return evaluate_prewrite(records[-1])
+
+
 # --- CLI wiring -------------------------------------------------------------
 
 def _run_check(name: str, path: Path, checker) -> int:
@@ -947,7 +1065,7 @@ def _run_check(name: str, path: Path, checker) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="homi-gate",
-        description="Fail-closed CI gates: completion bit, handoff, MCP allowlist, tool correctness, spans (A2E), trajectory.",
+        description="Fail-closed CI gates: completion bit, handoff, MCP allowlist, tool correctness, spans (A2E), trajectory, prewrite.",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -1014,6 +1132,13 @@ def main(argv: list[str] | None = None) -> int:
         "superset: every expected call appears in actual (bag, order ignored); extras allowed",
     )
 
+    p_pre = sub.add_parser(
+        "check-prewrite",
+        help="Fail unless a proposed tool call is allowed by a declarative rule before the write. "
+        "No LLM. Judge score is ignored. Uncovered writes fail closed.",
+    )
+    p_pre.add_argument("path", type=Path, help="JSON or JSONL proposed call + state + rules")
+
     args = parser.parse_args(argv)
     if args.command == "check-completion":
         return _run_check("check-completion", args.path, check_completion)
@@ -1033,6 +1158,8 @@ def main(argv: list[str] | None = None) -> int:
             args.path,
             lambda p: check_trajectory(p, mode=args.mode),
         )
+    if args.command == "check-prewrite":
+        return _run_check("check-prewrite", args.path, check_prewrite)
     if args.command == "check-spans":
         if args.two_zero:
             if not args.paths:

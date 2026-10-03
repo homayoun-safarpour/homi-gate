@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "homi-gate"
 version = "0.1.0"
-description = "Fail-closed CI gates for agent/MCP/RAG pipelines — completion, handoff, MCP allowlist, tools, spans, trajectory."
+description = "Fail-closed CI gates for agent/MCP/RAG pipelines — completion, handoff, MCP allowlist, tools, spans, trajectory, prewrite."
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.11"

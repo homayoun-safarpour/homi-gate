@@ -43,6 +43,7 @@ jobs:
           homi-gate check-trajectory --mode strict examples/trajectory_strict_ok.json
           homi-gate check-trajectory --mode subset examples/trajectory_missing_expected.json
           homi-gate check-trajectory --mode superset examples/trajectory_strict_extra.json
+          homi-gate check-prewrite examples/prewrite_cancel_ok.json
 
       - name: Demo CLI — expect FAIL (fail-closed smokes)
         run: |
@@ -65,3 +66,4 @@ jobs:
           ! homi-gate check-trajectory --mode subset examples/trajectory_strict_extra.json
           ! homi-gate check-trajectory --mode superset examples/trajectory_missing_expected.json
           ! homi-gate check-trajectory --mode strict examples/trajectory_judge_only.json
+          ! homi-gate check-prewrite examples/prewrite_cancel_denied.json
