@@ -88,3 +88,4 @@ jobs:
           ! homi-gate check-prewrite examples/prewrite_deny_if_not_singleton.json
           ! homi-gate check-prewrite examples/prewrite_unchanged_bad_field.json
           ! homi-gate check-prewrite examples/prewrite_forbidden_bad_field.json
+          ! homi-gate check-prewrite examples/prewrite_deny_if_not_object.json
