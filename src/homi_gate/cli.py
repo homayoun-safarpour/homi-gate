@@ -1010,8 +1010,8 @@ def main(argv: list[str] | None = None) -> int:
         required=True,
         choices=sorted(_TRAJECTORY_MODES),
         help="strict: actual equals expected, in order. "
-        "subset: every actual call is in expected, in order, no extras. "
-        "superset: every expected call appears in actual, in order; extras allowed",
+        "subset: every actual call is in expected (bag, order ignored), no extras. "
+        "superset: every expected call appears in actual (bag, order ignored); extras allowed",
     )
 
     args = parser.parse_args(argv)
