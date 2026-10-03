@@ -40,17 +40,14 @@ def test_cli_pass_and_fail():
 
 
 def test_unchanged_field_denies_change_and_allows_same():
-    changed = {
-        "proposed": {"name": "update_passengers", "write": True, "args": {"count": 3}},
-        "state": {"count": 2},
-        "rules": [{"tool": "update_passengers", "deny_if": {"unchanged": "count"}}],
-    }
+    reasons = check_prewrite(EXAMPLES / "prewrite_unchanged.json")
+    assert any("changed" in r for r in reasons)
+    assert main(["check-prewrite", str(EXAMPLES / "prewrite_unchanged.json")]) == 1
     same = {
         "proposed": {"name": "update_passengers", "write": True, "args": {"count": 2}},
         "state": {"count": 2},
         "rules": [{"tool": "update_passengers", "deny_if": {"unchanged": "count"}}],
     }
-    assert any("changed" in r for r in evaluate_prewrite(changed))
     assert evaluate_prewrite(same) == []
 
 
