@@ -86,3 +86,9 @@ def test_state_not_mutated():
     before = repr(payload)
     evaluate_prewrite(payload)
     assert repr(payload) == before
+
+
+def test_unsupported_deny_if_fails():
+    reasons = check_prewrite(EXAMPLES / "prewrite_unsupported_deny_if.json")
+    assert any("unsupported deny_if" in r for r in reasons)
+    assert main(["check-prewrite", str(EXAMPLES / "prewrite_unsupported_deny_if.json")]) == 1

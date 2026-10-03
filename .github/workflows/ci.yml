@@ -74,3 +74,4 @@ jobs:
           ! homi-gate check-prewrite examples/prewrite_forbidden.json
           ! homi-gate check-prewrite examples/prewrite_unchanged.json
           ! homi-gate check-prewrite examples/prewrite_missing_deny_if.json
+          ! homi-gate check-prewrite examples/prewrite_unsupported_deny_if.json
