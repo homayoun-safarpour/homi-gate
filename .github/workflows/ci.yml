@@ -67,3 +67,4 @@ jobs:
           ! homi-gate check-trajectory --mode superset examples/trajectory_missing_expected.json
           ! homi-gate check-trajectory --mode strict examples/trajectory_judge_only.json
           ! homi-gate check-prewrite examples/prewrite_cancel_denied.json
+          ! homi-gate check-prewrite examples/prewrite_missing_rules.json
