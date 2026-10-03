@@ -2,13 +2,14 @@
 
 Agent CI often stays green while the run is truncated, the next worker gets `context: null`, or MCP exposes every tool. Those are contract failures. They do not need an LLM judge.
 
-**homi-gate** is a thin, fail-closed CLI: five deterministic checks, exit `0` or `1`, no model in the loop.
+**homi-gate** is a thin, fail-closed CLI: six deterministic checks, exit `0` or `1`, no model in the loop.
 
 1. **Completion bit** — truncated / incomplete receipts fail  
 2. **Handoff contract** — null context and missing stop fields fail  
 3. **MCP allowlist** — “enable the whole server” shapes fail  
 4. **Tool correctness** *(field-remix-1)* — `tools_called` vs `expected_tools`, wrong-tool=0  
 5. **Spans / two-zero** *(field-remix-3 / A2E)* — OTel-style parent→tool spans + early-stall vs late-malform split  
+6. **Trajectory match** *(field-remix-4 / AgentEvals)* — `strict` ordered equality; `subset`/`superset` order-free bags  
 
 [Why these three](docs/MARKET.md) · MIT
 
