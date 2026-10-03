@@ -81,3 +81,4 @@ jobs:
           ! homi-gate check-prewrite examples/prewrite_rule_not_object.json
           ! homi-gate check-prewrite examples/prewrite_args_not_object.json
           ! homi-gate check-prewrite examples/prewrite_state_not_object.json
+          ! homi-gate check-prewrite examples/prewrite_eq_path_missing.json
