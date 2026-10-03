@@ -1,0 +1,5 @@
+{
+  "field_remix": "trajectory-match",
+  "expected": ["lookup_policy", "authorize"],
+  "actual": ["authorize", "lookup_policy"]
+}
