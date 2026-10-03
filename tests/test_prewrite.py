@@ -144,3 +144,8 @@ def test_ne_path_missing_fails():
     reasons = check_prewrite(EXAMPLES / "prewrite_ne_path_missing.json")
     assert any("path missing" in r for r in reasons)
     assert main(["check-prewrite", str(EXAMPLES / "prewrite_ne_path_missing.json")]) == 1
+
+def test_deny_if_not_singleton_fails():
+    reasons = check_prewrite(EXAMPLES / "prewrite_deny_if_not_singleton.json")
+    assert any("deny_if must be one of" in r for r in reasons)
+    assert main(["check-prewrite", str(EXAMPLES / "prewrite_deny_if_not_singleton.json")]) == 1
