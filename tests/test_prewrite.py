@@ -154,3 +154,8 @@ def test_unchanged_bad_field_fails():
     reasons = check_prewrite(EXAMPLES / "prewrite_unchanged_bad_field.json")
     assert any("unchanged expects a field name" in r for r in reasons)
     assert main(["check-prewrite", str(EXAMPLES / "prewrite_unchanged_bad_field.json")]) == 1
+
+def test_forbidden_bad_field_fails():
+    reasons = check_prewrite(EXAMPLES / "prewrite_forbidden_bad_field.json")
+    assert any("forbidden expects a field name" in r for r in reasons)
+    assert main(["check-prewrite", str(EXAMPLES / "prewrite_forbidden_bad_field.json")]) == 1
