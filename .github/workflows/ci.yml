@@ -83,3 +83,4 @@ jobs:
           ! homi-gate check-prewrite examples/prewrite_state_not_object.json
           ! homi-gate check-prewrite examples/prewrite_eq_path_missing.json
           ! homi-gate check-prewrite examples/prewrite_eq_bad_arity.json
+          ! homi-gate check-prewrite examples/prewrite_ne_bad_arity.json
