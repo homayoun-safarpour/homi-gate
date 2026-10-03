@@ -1,0 +1,18 @@
+{
+  "proposed": {
+    "name": "cancel_reservation",
+    "args": {
+      "id": "R1"
+    },
+    "write": true
+  },
+  "state": {
+    "refundable": true
+  },
+  "rules": [
+    "cancel_reservation"
+  ],
+  "status": "done",
+  "judge": "ACCEPT",
+  "comment": "looks good"
+}
