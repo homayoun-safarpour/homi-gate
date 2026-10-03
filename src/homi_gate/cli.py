@@ -735,12 +735,14 @@ def assert_two_zero_split_paths(
 # --- trajectory match (field-remix-4 / AgentEvals det slice) ----------------
 # Primary (opened 2026-10-03):
 #   https://docs.langchain.com/oss/python/langchain/test/evals
-# Public modes: strict | unordered | subset (no extras) | superset (extras ok).
-# This gate ships strict + the field brief's ordered "expected appears in actual"
-# check under --mode subset. That brief matches public *superset* plus order,
-# not public subset (which forbids extras). superset/unordered are not aliases.
+# Modes match that page, and this gate also requires order:
+#   strict:   actual == expected (extra, missing, or reorder fails)
+#   subset:   every actual call is in expected, in order; no extras
+#             (a shorter actual is allowed — agent did not exceed scope)
+#   superset: every expected call appears in actual, in order; extras allowed
+# unordered is not shipped. No LLM judge.
 
-_TRAJECTORY_MODES = frozenset({"strict", "subset"})
+_TRAJECTORY_MODES = frozenset({"strict", "subset", "superset"})
 _EXPECTED_TRAJ_KEYS = ("expected", "reference", "reference_outputs")
 _ACTUAL_TRAJ_KEYS = ("actual", "outputs")
 _JUDGE_SCORE_KEYS = ("score", "judge", "judge_score", "llm_score", "trajectory_score")
@@ -770,7 +772,7 @@ def _calls_match(expected: tuple[str, str | None], actual: tuple[str, str | None
 
 
 def _as_subsequence(expected: list[tuple[str, str | None]], actual: list[tuple[str, str | None]]) -> bool:
-    """True when every expected call appears in actual, in order. Extras allowed."""
+    """True when every expected call appears in actual, in order. Extras allowed (superset)."""
     j = 0
     for exp in expected:
         while j < len(actual) and not _calls_match(exp, actual[j]):
@@ -787,18 +789,85 @@ def _fmt_call(pin: tuple[str, str | None]) -> str:
     return f"{pin[0]}{pin[1]}"
 
 
+def _superset_breaks(
+    expected: list[tuple[str, str | None]],
+    actual: list[tuple[str, str | None]],
+    exp_s: list[str],
+) -> list[str]:
+    """Labels for expected calls that are missing or out of order in actual."""
+    j = 0
+    broken: list[str] = []
+    for exp, label in zip(expected, exp_s):
+        k = j
+        while k < len(actual) and not _calls_match(exp, actual[k]):
+            k += 1
+        if k < len(actual):
+            j = k + 1
+            continue
+        earlier = any(_calls_match(exp, actual[t]) for t in range(j))
+        if earlier:
+            broken.append(f"reorder:{label}")
+        else:
+            broken.append(f"missing:{label}")
+    return broken
+
+
+def _subset_breaks(
+    expected: list[tuple[str, str | None]],
+    actual: list[tuple[str, str | None]],
+    act_s: list[str],
+) -> list[str]:
+    """Labels for actual calls that are extras or out of order vs expected.
+
+    Empty means actual is an order-preserving subsequence of expected (no extras).
+    Missing expected calls are allowed.
+    """
+    i = 0
+    consumed: set[int] = set()
+    broken: list[str] = []
+    for act, label in zip(actual, act_s):
+        k = i
+        while k < len(expected) and not _calls_match(expected[k], act):
+            k += 1
+        if k < len(expected):
+            consumed.add(k)
+            i = k + 1
+            continue
+        skipped = any(
+            t not in consumed and _calls_match(expected[t], act) for t in range(i)
+        )
+        if skipped:
+            broken.append(f"reorder:{label}")
+        else:
+            broken.append(f"extra:{label}")
+    return broken
+
+
+def _format_breaks(mode: str, broken: list[str], act_s: list[str], exp_s: list[str]) -> list[str]:
+    if any(b.startswith("extra:") for b in broken):
+        kind = "extra tool call(s)"
+        detail = [b.split(":", 1)[1] for b in broken if b.startswith("extra:")]
+    elif any(b.startswith("reorder:") for b in broken):
+        kind = "reorder"
+        detail = [b.split(":", 1)[1] for b in broken if b.startswith("reorder:")]
+    else:
+        kind = "missing expected tool call(s)"
+        detail = [b.split(":", 1)[1] for b in broken]
+    return [f"{mode}: {kind}: {detail}; actual {act_s} expected {exp_s}"]
+
+
 def check_trajectory(path: Path, *, mode: str) -> list[str]:
     """Deterministic expected-vs-actual tool trajectory. No judge, no network.
 
     strict: same calls, same order, no extras.
-    subset: expected calls are an order-preserving subsequence of actual
-    (extras in actual are allowed). Missing or reordered expected calls fail.
+    subset: every actual call is in expected, in order; no extras.
+    superset: every expected call appears in actual, in order; extras allowed.
     A judge/score field never authorizes a pass.
     """
     if mode not in _TRAJECTORY_MODES:
         return [
-            f"unknown trajectory mode {mode!r}; this gate accepts strict|subset only "
-            "(public AgentEvals also has unordered|superset; not aliased here)"
+            f"unknown trajectory mode {mode!r}; this gate accepts strict|subset|superset only "
+            "(unordered is not shipped)"
         ]
 
     records = _load_json_or_jsonl(path)
@@ -851,7 +920,7 @@ def check_trajectory(path: Path, *, mode: str) -> list[str]:
 
     exp_s = [_fmt_call(c) for c in expected]
     act_s = [_fmt_call(c) for c in actual]
-    matched = _as_subsequence(expected, actual)
+    superset_ok = _as_subsequence(expected, actual)
 
     if mode == "strict":
         pairwise = len(expected) == len(actual) and all(
@@ -859,7 +928,7 @@ def check_trajectory(path: Path, *, mode: str) -> list[str]:
         )
         if pairwise:
             return []
-        if matched and len(actual) > len(expected):
+        if superset_ok and len(actual) > len(expected):
             return [
                 "strict: extra tool call(s); actual "
                 f"{act_s} != expected {exp_s}"
@@ -868,19 +937,12 @@ def check_trajectory(path: Path, *, mode: str) -> list[str]:
             return [
                 f"strict: reorder; actual {act_s} != expected {exp_s}"
             ]
-        if not matched:
-            missing = []
-            j = 0
-            for exp, label in zip(expected, exp_s):
-                while j < len(actual) and not _calls_match(exp, actual[j]):
-                    j += 1
-                if j == len(actual):
-                    missing.append(label)
-                else:
-                    j += 1
-            if missing and len(actual) >= len(expected):
+        if not superset_ok:
+            broken = _superset_breaks(expected, actual, exp_s)
+            missing = [b.split(":", 1)[1] for b in broken if b.startswith("missing:")]
+            if any(b.startswith("reorder:") for b in broken) and len(actual) >= len(expected):
                 return [
-                    f"strict: reorder or mismatch; missing in order {missing}; "
+                    f"strict: reorder or mismatch; missing in order {missing or exp_s}; "
                     f"actual {act_s} != expected {exp_s}"
                 ]
             return [
@@ -889,27 +951,16 @@ def check_trajectory(path: Path, *, mode: str) -> list[str]:
             ]
         return [f"strict: trajectory mismatch; actual {act_s} != expected {exp_s}"]
 
-    # subset: extras allowed, expected order required
-    if matched:
+    if mode == "superset":
+        if superset_ok:
+            return []
+        return _format_breaks("superset", _superset_breaks(expected, actual, exp_s), act_s, exp_s)
+
+    # subset: no extras; actual is an ordered subsequence of expected
+    broken = _subset_breaks(expected, actual, act_s)
+    if not broken:
         return []
-    # name present earlier than the walk = reorder; otherwise missing
-    j = 0
-    broken: list[str] = []
-    for exp, label in zip(expected, exp_s):
-        k = j
-        while k < len(actual) and not _calls_match(exp, actual[k]):
-            k += 1
-        if k < len(actual):
-            j = k + 1
-            continue
-        earlier = any(_calls_match(exp, actual[t]) for t in range(j))
-        if earlier:
-            broken.append(f"reorder:{label}")
-        else:
-            broken.append(f"missing:{label}")
-    kind = "reorder" if any(b.startswith("reorder:") for b in broken) else "missing expected tool call(s)"
-    detail = [b.split(":", 1)[1] for b in broken]
-    return [f"subset: {kind}: {detail}; actual {act_s} expected {exp_s}"]
+    return _format_breaks("subset", broken, act_s, exp_s)
 
 
 # --- CLI wiring -------------------------------------------------------------
@@ -986,7 +1037,7 @@ def main(argv: list[str] | None = None) -> int:
 
     p_traj = sub.add_parser(
         "check-trajectory",
-        help="Fail unless actual tool trajectory matches expected (strict or ordered subset). "
+        help="Fail unless actual tool trajectory matches expected (strict, subset, or superset). "
         "No LLM. Judge score is ignored.",
     )
     p_traj.add_argument("path", type=Path, help="JSON or JSONL expected-vs-actual trajectory")
@@ -994,8 +1045,9 @@ def main(argv: list[str] | None = None) -> int:
         "--mode",
         required=True,
         choices=sorted(_TRAJECTORY_MODES),
-        help="strict: equal sequence (extra/missing/reorder fail). "
-        "subset: expected calls appear in actual in order; extra actual calls allowed",
+        help="strict: actual equals expected, in order. "
+        "subset: every actual call is in expected, in order, no extras. "
+        "superset: every expected call appears in actual, in order; extras allowed",
     )
 
     args = parser.parse_args(argv)

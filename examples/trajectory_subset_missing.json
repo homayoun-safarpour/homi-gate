@@ -1,6 +1,0 @@
-{
-  "field_remix": "trajectory-match",
-  "score": true,
-  "expected": ["lookup_policy", "authorize"],
-  "actual": ["lookup_policy"]
-}

@@ -43,7 +43,8 @@ homi-gate check-tools examples/tools_ok.json
 homi-gate check-spans examples/span_ok.json
 homi-gate check-spans --two-zero examples/zero_early_stall.json examples/zero_late_tool_malform.json
 homi-gate check-trajectory --mode strict examples/trajectory_strict_ok.json
-homi-gate check-trajectory --mode subset examples/trajectory_strict_extra.json
+homi-gate check-trajectory --mode subset examples/trajectory_missing_expected.json
+homi-gate check-trajectory --mode superset examples/trajectory_strict_extra.json
 ```
 
 Should fail (exit `1`, reasons on stderr):
@@ -60,7 +61,8 @@ homi-gate check-tools examples/tools_missing.json
 homi-gate check-spans examples/span_missing_tool.json
 homi-gate check-spans examples/tool_malform.json
 homi-gate check-trajectory --mode strict examples/trajectory_strict_extra.json
-homi-gate check-trajectory --mode subset examples/trajectory_subset_missing.json
+homi-gate check-trajectory --mode subset examples/trajectory_strict_extra.json
+homi-gate check-trajectory --mode superset examples/trajectory_missing_expected.json
 homi-gate check-trajectory --mode strict examples/trajectory_judge_only.json
 ```
 
@@ -75,7 +77,7 @@ Also covered: `examples/pass.jsonl`, `examples/mcp_disabled_ok.yaml` (explicitly
 | `check-mcp-allowlist` | allowlist **and** denylist, **or** `enabled: false` with named tools | open “enable whole server” shape |
 | `check-tools` | `tools_called` names match `expected_tools` set (optional `--exact-args`) | unexpected tool / missing required / empty expected when claim asserts tools |
 | `check-spans` | A1 parent+tool child (name+status); A2 tool status∈{ok,error,denied}+args object; A3 `--two-zero` discriminates early stall vs late malform | missing tool span / malformed invocation / identical correctness=0 theater |
-| `check-trajectory` | `--mode strict` equal sequence, or `--mode subset` expected calls in order (extras in actual allowed) | extra tool on strict / missing or reordered expected call / judge score with no trajectory |
+| `check-trajectory` | `strict` actual equals expected in order; `subset` every actual call is in expected, in order, no extras; `superset` every expected call appears in actual, in order, extras allowed | extra on strict or subset / missing or reorder on strict or superset / reorder on subset / judge score with no trajectory |
 
 Handoff required fields: `from_agent`, `to_agent`, `proved`, `pending`, `stop`, `forbidden`, `report` (aliases `from` / `to` accepted). Receipts may be JSON, a JSON list, or JSONL. Completion still inspects the final record for bit/status/artifact, but mid-stream `truncated: true` stream-vetoes a later green final (see `examples/doppelganger.jsonl`).
 
@@ -144,11 +146,9 @@ Cite [PAPER-FIELD-REMIX-3](https://arxiv.org/abs/2608.07346) A2E — ship **only
 
 Soft / LLM lifecycle petals stay optional companions and **never ACCEPT alone** (PAPER-032 · field-remix-2 two-speed).
 
-### Field-remix-4: `check-trajectory` (subset / strict, det-first)
+### Field-remix-4: `check-trajectory` (strict / subset / superset, det-first)
 
-Ordered tool-call match. `--mode strict` fails on extra, missing, or reorder. `--mode subset` allows extra actual calls and still fails if an expected call is missing or out of order. Optional args are pinned only when expected declares them. A `score` / judge field is ignored.
-
-Public source (modes verified, not copied): [Agent Evals](https://docs.langchain.com/oss/python/langchain/test/evals). Their `subset` means no extras; their `superset` allows extras. This command's `subset` is the extras-allowed ordered check. `superset` is not an alias.
+Ordered tool-call match, names aligned with [Agent Evals](https://docs.langchain.com/oss/python/langchain/test/evals). `--mode strict` fails on extra, missing, or reorder. `--mode subset` fails on extras or reorder and allows a shorter actual (no tools outside expected). `--mode superset` allows extra actual calls and fails if an expected call is missing or out of order. Optional args are pinned only when expected declares them. A `score` / judge field is ignored. `unordered` is not shipped.
 
 
 ## Non-goals
@@ -169,7 +169,7 @@ If a weekend clone does **not** catch a truncated run, a null handoff, an open M
 - More receipt dialects (Agents SDK / LangGraph slices)  
 - ~~wrong-tool=0 from tool-call receipts~~ → shipped as `check-tools` (field-remix-1)
 - ~~A2E span / two-zero det asserts~~ → shipped as `check-spans` (field-remix-3)
-- ~~trajectory strict/subset det match~~ → shipped as `check-trajectory` (field-remix-4)
+- ~~trajectory strict/subset/superset det match~~ → shipped as `check-trajectory` (field-remix-4)
 
 Build-in-public drafts (manual post only): [CONTENT/FOLLOWERS.md](CONTENT/FOLLOWERS.md).
 
