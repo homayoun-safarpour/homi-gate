@@ -124,3 +124,8 @@ def test_state_not_object_fails():
     reasons = check_prewrite(EXAMPLES / "prewrite_state_not_object.json")
     assert any("state must be an object" in r for r in reasons)
     assert main(["check-prewrite", str(EXAMPLES / "prewrite_state_not_object.json")]) == 1
+
+def test_eq_path_missing_fails():
+    reasons = check_prewrite(EXAMPLES / "prewrite_eq_path_missing.json")
+    assert any("path missing" in r for r in reasons)
+    assert main(["check-prewrite", str(EXAMPLES / "prewrite_eq_path_missing.json")]) == 1
