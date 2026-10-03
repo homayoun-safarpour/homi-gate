@@ -1,0 +1,19 @@
+{
+  "proposed": {
+    "name": "delete_reservation",
+    "args": {},
+    "write": true
+  },
+  "state": {},
+  "rules": [
+    {
+      "tool": "other",
+      "deny_if": {
+        "eq": ["state.x", 1]
+      }
+    }
+  ],
+  "status": "done",
+  "judge": "ACCEPT",
+  "comment": "looks good"
+}

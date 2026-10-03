@@ -70,16 +70,9 @@ def test_forbidden_field_and_readonly_without_covering_rule():
 
 
 def test_uncovered_write_fails_and_judge_does_not_override():
-    uncovered = {
-        "proposed": {"name": "delete_reservation", "write": True, "args": {}},
-        "state": {},
-        "rules": [{"tool": "other", "deny_if": {"eq": ["state.x", 1]}}],
-        "status": "done",
-        "judge": "ACCEPT",
-        "comment": "looks good",
-    }
-    reasons = evaluate_prewrite(uncovered)
+    reasons = check_prewrite(EXAMPLES / "prewrite_uncovered.json")
     assert any("no covering rule" in r for r in reasons)
+    assert main(["check-prewrite", str(EXAMPLES / "prewrite_uncovered.json")]) == 1
 
 
 def test_state_not_mutated():
