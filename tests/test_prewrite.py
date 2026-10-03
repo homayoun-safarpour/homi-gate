@@ -98,3 +98,9 @@ def test_proposed_name_missing_fails():
     reasons = check_prewrite(EXAMPLES / "prewrite_missing_name.json")
     assert any("proposed.name missing" in r for r in reasons)
     assert main(["check-prewrite", str(EXAMPLES / "prewrite_missing_name.json")]) == 1
+
+
+def test_rules_not_list_fails():
+    reasons = check_prewrite(EXAMPLES / "prewrite_rules_not_list.json")
+    assert any("rules must be a list" in r for r in reasons)
+    assert main(["check-prewrite", str(EXAMPLES / "prewrite_rules_not_list.json")]) == 1
