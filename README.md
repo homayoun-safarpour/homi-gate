@@ -77,7 +77,7 @@ Also covered: `examples/pass.jsonl`, `examples/mcp_disabled_ok.yaml` (explicitly
 | `check-mcp-allowlist` | allowlist **and** denylist, **or** `enabled: false` with named tools | open “enable whole server” shape |
 | `check-tools` | `tools_called` names match `expected_tools` set (optional `--exact-args`) | unexpected tool / missing required / empty expected when claim asserts tools |
 | `check-spans` | A1 parent+tool child (name+status); A2 tool status∈{ok,error,denied}+args object; A3 `--two-zero` discriminates early stall vs late malform | missing tool span / malformed invocation / identical correctness=0 theater |
-| `check-trajectory` | `strict` actual equals expected in order; `subset` every actual call is in expected, in order, no extras; `superset` every expected call appears in actual, in order, extras allowed | extra on strict or subset / missing or reorder on strict or superset / reorder on subset / judge score with no trajectory |
+| `check-trajectory` | `strict` actual equals expected in order; `subset` every actual call is in expected (bag, order ignored), no extras; `superset` every expected call appears in actual (bag, order ignored), extras allowed | extra on strict or subset / missing on strict or superset / reorder on strict / judge score with no trajectory |
 
 Handoff required fields: `from_agent`, `to_agent`, `proved`, `pending`, `stop`, `forbidden`, `report` (aliases `from` / `to` accepted). Receipts may be JSON, a JSON list, or JSONL. Completion still inspects the final record for bit/status/artifact, but mid-stream `truncated: true` stream-vetoes a later green final (see `examples/doppelganger.jsonl`).
 
@@ -148,7 +148,7 @@ Soft / LLM lifecycle petals stay optional companions and **never ACCEPT alone** 
 
 ### Field-remix-4: `check-trajectory` (strict / subset / superset, det-first)
 
-Ordered tool-call match, names aligned with [Agent Evals](https://docs.langchain.com/oss/python/langchain/test/evals). `--mode strict` fails on extra, missing, or reorder. `--mode subset` fails on extras or reorder and allows a shorter actual (no tools outside expected). `--mode superset` allows extra actual calls and fails if an expected call is missing or out of order. Optional args are pinned only when expected declares them. A `score` / judge field is ignored. `unordered` is not shipped.
+Tool-call match aligned with [Agent Evals](https://docs.langchain.com/oss/python/langchain/test/evals) (and LangSmith trajectory docs). `--mode strict` is ordered equality — fails on extra, missing, or reorder. `--mode subset` and `--mode superset` are **order-free bags** like the primary: subset fails only on extras (shorter actual ok); superset fails only when an expected call is missing (extras ok). Optional args are pinned only when expected declares them. A `score` / judge field is ignored. `unordered` (equal bags either way) is not shipped.
 
 
 ## Non-goals
