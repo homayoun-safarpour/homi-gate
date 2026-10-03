@@ -54,18 +54,15 @@ def test_unchanged_field_denies_change_and_allows_same():
     assert evaluate_prewrite(same) == []
 
 
-def test_forbidden_field_and_readonly_without_covering_rule():
-    forbidden = {
-        "proposed": {"name": "update_passengers", "write": True, "args": {"ssn": "x", "count": 2}},
-        "state": {"count": 2},
-        "rules": [{"tool": "update_passengers", "deny_if": {"forbidden": "ssn"}}],
-    }
+def test_forbidden_field_fails_and_readonly_without_covering_rule():
+    reasons = check_prewrite(EXAMPLES / "prewrite_forbidden.json")
+    assert any("forbidden field ssn" in r for r in reasons)
+    assert main(["check-prewrite", str(EXAMPLES / "prewrite_forbidden.json")]) == 1
     readonly = {
         "proposed": {"name": "get_reservation", "write": False, "args": {"id": "R1"}},
         "state": {"refundable": False},
         "rules": [],
     }
-    assert any("forbidden field ssn" in r for r in evaluate_prewrite(forbidden))
     assert evaluate_prewrite(readonly) == []
 
 
