@@ -11,7 +11,7 @@ Agent CI often stays green while the run is truncated, the next worker gets `con
 5. **Spans / two-zero** *(field-remix-3 / A2E)* — OTel-style parent→tool spans + early-stall vs late-malform split  
 6. **Trajectory match** *(field-remix-4 / AgentEvals)* — `strict` ordered equality; `subset`/`superset` order-free bags  
 
-[Why these three](docs/MARKET.md) · MIT
+[Why these gates](docs/MARKET.md) · MIT
 
 ---
 
