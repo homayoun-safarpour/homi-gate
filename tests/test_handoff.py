@@ -19,6 +19,26 @@ def test_handoff_bad():
     assert "stop is empty string" in joined
 
 
+def test_handoff_transcript_dump():
+    reasons = check_handoff(EXAMPLES / "handoff_transcript_dump.json")
+    assert reasons
+    joined = " ".join(reasons)
+    assert "context is null" in joined
+    assert "transcript dump" in joined
+    assert "missing required field" in joined
+    assert "transcript.context is null" in joined
+
+
+def test_cli_handoff_transcript_dump_exit_1():
+    assert main(["check-handoff", str(EXAMPLES / "handoff_transcript_dump.json")]) == 1
+
+
+def test_handoff_soft_null_coerce():
+    reasons = check_handoff(EXAMPLES / "handoff_soft_null_coerce.json")
+    assert reasons
+    assert any("soft-null coerce" in r or "context is empty" in r for r in reasons)
+
+
 def test_cli_handoff_pass():
     assert main(["check-handoff", str(EXAMPLES / "handoff_ok.json")]) == 0
 

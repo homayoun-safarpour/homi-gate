@@ -3,6 +3,7 @@
   "status": "completed",
   "completion_bit": true,
   "truncated": false,
+  "proof_path": "artifacts/synth-001.json",
   "steps": 4,
   "notes": "synthetic happy path"
 }

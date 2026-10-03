@@ -1,0 +1,8 @@
+{
+  "run_id": "synth-soft-done-001",
+  "status": "DONE",
+  "completion_bit": true,
+  "truncated": false,
+  "steps": 3,
+  "notes": "soft DONE — bit/status claim complete but no proof_path/evidence_path/artifact"
+}
