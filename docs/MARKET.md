@@ -19,6 +19,9 @@ Live Ireland / EU AI engineering roles and practitioner notes keep asking for th
 | Truncated / incomplete run | `check-completion` | completion bit / complete status; not truncated |
 | Null or incomplete handoff | `check-handoff` | required fields non-null; one pending; stop present |
 | Open MCP surface | `check-mcp-allowlist` | allowlist+denylist or disabled+named tools |
+| Wrong / missing tools | `check-tools` | `tools_called` vs `expected_tools`; wrong-tool=0 |
+| Span / two-zero theater | `check-spans` | parent→tool spans; early-stall vs late-malform split |
+| Trajectory mismatch | `check-trajectory` | strict ordered; subset/superset order-free bags |
 
 ## Falsifier
 
