@@ -1045,6 +1045,27 @@ def check_prewrite(path: Path) -> list[str]:
     return evaluate_prewrite(records[-1])
 
 
+
+def _prewrite_stdout(applied: bool, exit_code: int, reason: str | None = None) -> int:
+    """One JSON line. applied is true only when the proposed write is allowed."""
+    payload: dict[str, Any] = {"applied": applied, "exit": exit_code}
+    if not applied:
+        payload["reason"] = reason if reason else "fail-closed"
+    print(json.dumps(payload, ensure_ascii=False))
+    return exit_code
+
+
+def _run_prewrite(path: Path) -> int:
+    """Print the applied bit. Exit matches it. status=done and judge=ACCEPT are ignored."""
+    try:
+        reasons = check_prewrite(path)
+    except (OSError, ValueError, json.JSONDecodeError, RuntimeError) as exc:
+        return _prewrite_stdout(False, 1, str(exc))
+    if reasons:
+        return _prewrite_stdout(False, 1, "; ".join(reasons))
+    return _prewrite_stdout(True, 0)
+
+
 # --- CLI wiring -------------------------------------------------------------
 
 def _run_check(name: str, path: Path, checker) -> int:
@@ -1159,7 +1180,7 @@ def main(argv: list[str] | None = None) -> int:
             lambda p: check_trajectory(p, mode=args.mode),
         )
     if args.command == "check-prewrite":
-        return _run_check("check-prewrite", args.path, check_prewrite)
+        return _run_prewrite(args.path)
     if args.command == "check-spans":
         if args.two_zero:
             if not args.paths:

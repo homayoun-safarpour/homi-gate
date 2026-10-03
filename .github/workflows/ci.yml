@@ -43,7 +43,8 @@ jobs:
           homi-gate check-trajectory --mode strict examples/trajectory_strict_ok.json
           homi-gate check-trajectory --mode subset examples/trajectory_missing_expected.json
           homi-gate check-trajectory --mode superset examples/trajectory_strict_extra.json
-          homi-gate check-prewrite examples/prewrite_cancel_ok.json
+          ok=$(homi-gate check-prewrite examples/prewrite_cancel_ok.json)
+          printf '%s\n' "$ok" | python -c 'import json,sys; d=json.load(sys.stdin); assert d=={"applied": True, "exit": 0}, d'
 
       - name: Demo CLI — expect FAIL (fail-closed smokes)
         run: |
@@ -67,6 +68,12 @@ jobs:
           ! homi-gate check-trajectory --mode superset examples/trajectory_missing_expected.json
           ! homi-gate check-trajectory --mode strict examples/trajectory_judge_only.json
           ! homi-gate check-prewrite examples/prewrite_cancel_denied.json
+          set +e
+          denied=$(homi-gate check-prewrite examples/prewrite_uncovered.json)
+          denied_code=$?
+          set -e
+          test "$denied_code" -eq 1
+          printf '%s\n' "$denied" | python -c 'import json,sys; d=json.load(sys.stdin); assert d["applied"] is False and d["exit"]==1 and d.get("reason"), d'
           ! homi-gate check-prewrite examples/prewrite_missing_rules.json
           ! homi-gate check-prewrite examples/prewrite_count_change.json
           ! homi-gate check-prewrite examples/prewrite_judge_only.json
