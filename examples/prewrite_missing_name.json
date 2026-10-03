@@ -1,0 +1,22 @@
+{
+  "proposed": {
+    "args": {
+      "id": "R1"
+    },
+    "write": true
+  },
+  "state": {
+    "refundable": true
+  },
+  "rules": [
+    {
+      "tool": "cancel_reservation",
+      "deny_if": {
+        "eq": ["state.refundable", false]
+      }
+    }
+  ],
+  "status": "done",
+  "judge": "ACCEPT",
+  "comment": "looks good"
+}

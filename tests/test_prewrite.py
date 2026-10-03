@@ -92,3 +92,9 @@ def test_unsupported_deny_if_fails():
     reasons = check_prewrite(EXAMPLES / "prewrite_unsupported_deny_if.json")
     assert any("unsupported deny_if" in r for r in reasons)
     assert main(["check-prewrite", str(EXAMPLES / "prewrite_unsupported_deny_if.json")]) == 1
+
+
+def test_proposed_name_missing_fails():
+    reasons = check_prewrite(EXAMPLES / "prewrite_missing_name.json")
+    assert any("proposed.name missing" in r for r in reasons)
+    assert main(["check-prewrite", str(EXAMPLES / "prewrite_missing_name.json")]) == 1
