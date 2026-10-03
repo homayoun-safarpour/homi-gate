@@ -1,4 +1,4 @@
-"""homi-gate CLI — fail-closed checks for completion, handoff, MCP allowlist, tool correctness, spans (A2E)."""
+"""homi-gate CLI — fail-closed checks for completion, handoff, MCP allowlist, tool correctness, spans (A2E), trajectory."""
 
 from __future__ import annotations
 
@@ -731,6 +731,187 @@ def assert_two_zero_split_paths(
     ]
 
 
+
+# --- trajectory match (field-remix-4 / AgentEvals det slice) ----------------
+# Primary (opened 2026-10-03):
+#   https://docs.langchain.com/oss/python/langchain/test/evals
+# Public modes: strict | unordered | subset (no extras) | superset (extras ok).
+# This gate ships strict + the field brief's ordered "expected appears in actual"
+# check under --mode subset. That brief matches public *superset* plus order,
+# not public subset (which forbids extras). superset/unordered are not aliases.
+
+_TRAJECTORY_MODES = frozenset({"strict", "subset"})
+_EXPECTED_TRAJ_KEYS = ("expected", "reference", "reference_outputs")
+_ACTUAL_TRAJ_KEYS = ("actual", "outputs")
+_JUDGE_SCORE_KEYS = ("score", "judge", "judge_score", "llm_score", "trajectory_score")
+
+
+def _canonical_args(args: Any) -> str:
+    return json.dumps(args, sort_keys=True, default=str)
+
+
+def _call_pin(entry: Any) -> tuple[str, str | None] | None:
+    """(name, canonical args or None when the call does not pin args)."""
+    name = _tool_name(entry)
+    if name is None:
+        return None
+    args = _tool_args(entry)
+    if args is None:
+        return name, None
+    return name, _canonical_args(args)
+
+
+def _calls_match(expected: tuple[str, str | None], actual: tuple[str, str | None]) -> bool:
+    if expected[0] != actual[0]:
+        return False
+    if expected[1] is None:
+        return True
+    return expected[1] == actual[1]
+
+
+def _as_subsequence(expected: list[tuple[str, str | None]], actual: list[tuple[str, str | None]]) -> bool:
+    """True when every expected call appears in actual, in order. Extras allowed."""
+    j = 0
+    for exp in expected:
+        while j < len(actual) and not _calls_match(exp, actual[j]):
+            j += 1
+        if j == len(actual):
+            return False
+        j += 1
+    return True
+
+
+def _fmt_call(pin: tuple[str, str | None]) -> str:
+    if pin[1] is None:
+        return pin[0]
+    return f"{pin[0]}{pin[1]}"
+
+
+def check_trajectory(path: Path, *, mode: str) -> list[str]:
+    """Deterministic expected-vs-actual tool trajectory. No judge, no network.
+
+    strict: same calls, same order, no extras.
+    subset: expected calls are an order-preserving subsequence of actual
+    (extras in actual are allowed). Missing or reordered expected calls fail.
+    A judge/score field never authorizes a pass.
+    """
+    if mode not in _TRAJECTORY_MODES:
+        return [
+            f"unknown trajectory mode {mode!r}; this gate accepts strict|subset only "
+            "(public AgentEvals also has unordered|superset; not aliased here)"
+        ]
+
+    records = _load_json_or_jsonl(path)
+    last = records[-1]
+    reasons: list[str] = []
+
+    expected_raw, expected_key = _extract_tool_list(last, _EXPECTED_TRAJ_KEYS)
+    actual_raw, actual_key = _extract_tool_list(last, _ACTUAL_TRAJ_KEYS)
+    judge_present = any(k in last for k in _JUDGE_SCORE_KEYS)
+
+    if expected_raw is None or actual_raw is None:
+        if judge_present and expected_raw is None and actual_raw is None:
+            return [
+                "judge-only trajectory score is not a gate (missing expected and actual)"
+            ]
+        if expected_raw is None:
+            reasons.append("missing expected (or reference / reference_outputs)")
+        if actual_raw is None:
+            reasons.append("missing actual (or outputs)")
+        return reasons
+
+    if not isinstance(expected_raw, list):
+        reasons.append(f"{expected_key} must be a list, got {type(expected_raw).__name__}")
+    if not isinstance(actual_raw, list):
+        reasons.append(f"{actual_key} must be a list, got {type(actual_raw).__name__}")
+    if reasons:
+        return reasons
+
+    assert isinstance(expected_raw, list) and isinstance(actual_raw, list)
+    if len(expected_raw) == 0:
+        return ["empty expected trajectory — fail-closed (no vacuous pass)"]
+
+    expected: list[tuple[str, str | None]] = []
+    for i, entry in enumerate(expected_raw):
+        pin = _call_pin(entry)
+        if pin is None:
+            reasons.append(f"expected[{i}] has no usable tool name")
+        else:
+            expected.append(pin)
+
+    actual: list[tuple[str, str | None]] = []
+    for i, entry in enumerate(actual_raw):
+        pin = _call_pin(entry)
+        if pin is None:
+            reasons.append(f"actual[{i}] has no usable tool name")
+        else:
+            actual.append(pin)
+    if reasons:
+        return reasons
+
+    exp_s = [_fmt_call(c) for c in expected]
+    act_s = [_fmt_call(c) for c in actual]
+    matched = _as_subsequence(expected, actual)
+
+    if mode == "strict":
+        pairwise = len(expected) == len(actual) and all(
+            _calls_match(e, a) for e, a in zip(expected, actual)
+        )
+        if pairwise:
+            return []
+        if matched and len(actual) > len(expected):
+            return [
+                "strict: extra tool call(s); actual "
+                f"{act_s} != expected {exp_s}"
+            ]
+        if len(expected) == len(actual) and sorted(exp_s) == sorted(act_s):
+            return [
+                f"strict: reorder; actual {act_s} != expected {exp_s}"
+            ]
+        if not matched:
+            missing = []
+            j = 0
+            for exp, label in zip(expected, exp_s):
+                while j < len(actual) and not _calls_match(exp, actual[j]):
+                    j += 1
+                if j == len(actual):
+                    missing.append(label)
+                else:
+                    j += 1
+            if missing and len(actual) >= len(expected):
+                return [
+                    f"strict: reorder or mismatch; missing in order {missing}; "
+                    f"actual {act_s} != expected {exp_s}"
+                ]
+            return [
+                f"strict: missing expected tool call(s) {missing or exp_s}; "
+                f"actual {act_s}"
+            ]
+        return [f"strict: trajectory mismatch; actual {act_s} != expected {exp_s}"]
+
+    # subset: extras allowed, expected order required
+    if matched:
+        return []
+    # name present earlier than the walk = reorder; otherwise missing
+    j = 0
+    broken: list[str] = []
+    for exp, label in zip(expected, exp_s):
+        k = j
+        while k < len(actual) and not _calls_match(exp, actual[k]):
+            k += 1
+        if k < len(actual):
+            j = k + 1
+            continue
+        earlier = any(_calls_match(exp, actual[t]) for t in range(j))
+        if earlier:
+            broken.append(f"reorder:{label}")
+        else:
+            broken.append(f"missing:{label}")
+    kind = "reorder" if any(b.startswith("reorder:") for b in broken) else "missing expected tool call(s)"
+    detail = [b.split(":", 1)[1] for b in broken]
+    return [f"subset: {kind}: {detail}; actual {act_s} expected {exp_s}"]
+
+
 # --- CLI wiring -------------------------------------------------------------
 
 def _run_check(name: str, path: Path, checker) -> int:
@@ -751,7 +932,7 @@ def _run_check(name: str, path: Path, checker) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="homi-gate",
-        description="Fail-closed CI gates: completion bit, handoff, MCP allowlist, tool correctness, spans (A2E).",
+        description="Fail-closed CI gates: completion bit, handoff, MCP allowlist, tool correctness, spans (A2E), trajectory.",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -803,6 +984,20 @@ def main(argv: list[str] | None = None) -> int:
         help=f"A3 early-stall minimum tool_call_count (default {_DEFAULT_EARLY_STALL_MIN_CALLS})",
     )
 
+    p_traj = sub.add_parser(
+        "check-trajectory",
+        help="Fail unless actual tool trajectory matches expected (strict or ordered subset). "
+        "No LLM. Judge score is ignored.",
+    )
+    p_traj.add_argument("path", type=Path, help="JSON or JSONL expected-vs-actual trajectory")
+    p_traj.add_argument(
+        "--mode",
+        required=True,
+        choices=sorted(_TRAJECTORY_MODES),
+        help="strict: equal sequence (extra/missing/reorder fail). "
+        "subset: expected calls appear in actual in order; extra actual calls allowed",
+    )
+
     args = parser.parse_args(argv)
     if args.command == "check-completion":
         return _run_check("check-completion", args.path, check_completion)
@@ -815,6 +1010,12 @@ def main(argv: list[str] | None = None) -> int:
             "check-tools",
             args.path,
             lambda p: check_tools(p, exact_args=args.exact_args),
+        )
+    if args.command == "check-trajectory":
+        return _run_check(
+            f"check-trajectory --mode {args.mode}",
+            args.path,
+            lambda p: check_trajectory(p, mode=args.mode),
         )
     if args.command == "check-spans":
         if args.two_zero:

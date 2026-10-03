@@ -1,0 +1,11 @@
+{
+  "field_remix": "trajectory-match",
+  "expected": [
+    {"name": "lookup_policy", "args": {"id": "p1"}},
+    {"name": "authorize"}
+  ],
+  "actual": [
+    {"name": "lookup_policy", "args": {"id": "p1"}},
+    {"name": "authorize"}
+  ]
+}
