@@ -134,3 +134,8 @@ def test_eq_bad_arity_fails():
     reasons = check_prewrite(EXAMPLES / "prewrite_eq_bad_arity.json")
     assert any("expects [left, right]" in r for r in reasons)
     assert main(["check-prewrite", str(EXAMPLES / "prewrite_eq_bad_arity.json")]) == 1
+
+def test_ne_bad_arity_fails():
+    reasons = check_prewrite(EXAMPLES / "prewrite_ne_bad_arity.json")
+    assert any("expects [left, right]" in r for r in reasons)
+    assert main(["check-prewrite", str(EXAMPLES / "prewrite_ne_bad_arity.json")]) == 1
