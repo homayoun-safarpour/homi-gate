@@ -159,3 +159,8 @@ def test_forbidden_bad_field_fails():
     reasons = check_prewrite(EXAMPLES / "prewrite_forbidden_bad_field.json")
     assert any("forbidden expects a field name" in r for r in reasons)
     assert main(["check-prewrite", str(EXAMPLES / "prewrite_forbidden_bad_field.json")]) == 1
+
+def test_deny_if_not_object_fails():
+    reasons = check_prewrite(EXAMPLES / "prewrite_deny_if_not_object.json")
+    assert any("deny_if must be one of" in r for r in reasons)
+    assert main(["check-prewrite", str(EXAMPLES / "prewrite_deny_if_not_object.json")]) == 1
