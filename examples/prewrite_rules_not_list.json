@@ -1,0 +1,14 @@
+{
+  "proposed": {
+    "name": "cancel_reservation",
+    "args": {"id": "R1"},
+    "write": true
+  },
+  "state": {
+    "refundable": false
+  },
+  "rules": {
+    "tool": "cancel_reservation",
+    "deny_if": {"eq": ["state.refundable", false]}
+  }
+}
