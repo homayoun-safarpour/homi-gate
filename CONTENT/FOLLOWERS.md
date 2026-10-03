@@ -15,7 +15,7 @@ I’ve been reading Dublin/Ireland AI eng JDs. The hire signal isn’t “we use
 - MCP wrong-tool = 0  
 - agents that actually stop  
 
-Open-sourced a tiny gate tonight: **homi-gate** — fail-closed checks for completion bit, handoff contracts, MCP allowlist.
+Open-sourced a tiny gate tonight: **homi-gate** — fail-closed checks for completion, handoff, MCP allowlist, tools, spans, and trajectory.
 
 Completion ≠ satisfaction. If the receipt says truncated, CI should go red.
 
@@ -53,14 +53,17 @@ That’s what `homi-gate check-mcp-allowlist` asserts in CI. No model score. Jus
 
 ## 4 — X thread starter (build-in-public)
 
-Day 1 of **homi-gate**:
+**homi-gate** field remix (still thin):
 
-Three CLI commands. Three exit codes. Zero vibes.
+Six CLI commands. Exit `0` or `1`. Zero vibes.
 
 ```
 check-completion
 check-handoff
 check-mcp-allowlist
+check-tools
+check-spans
+check-trajectory
 ```
 
 Built from public IE/EU hire signals → thin CI gates, not another eval framework.
