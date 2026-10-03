@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from homi_gate.cli import check_prewrite, evaluate_prewrite, main
@@ -169,3 +170,22 @@ def test_deny_if_null_fails():
     reasons = check_prewrite(EXAMPLES / "prewrite_deny_if_null.json")
     assert any("deny_if must be one of" in r for r in reasons)
     assert main(["check-prewrite", str(EXAMPLES / "prewrite_deny_if_null.json")]) == 1
+
+def test_denied_done_accept_is_not_applied(capsys):
+    """status=done and judge=ACCEPT do not make a denied write applied."""
+    denied = EXAMPLES / "prewrite_uncovered.json"
+    body = json.loads(denied.read_text())
+    assert body["status"] == "done"
+    assert body["judge"] == "ACCEPT"
+    code = main(["check-prewrite", str(denied)])
+    verdict = json.loads(capsys.readouterr().out.strip())
+    assert code == verdict["exit"] == 1
+    assert verdict["applied"] is False
+    assert verdict["reason"]
+
+    allowed = EXAMPLES / "prewrite_cancel_ok.json"
+    code = main(["check-prewrite", str(allowed)])
+    verdict = json.loads(capsys.readouterr().out.strip())
+    assert code == verdict["exit"] == 0
+    assert verdict == {"applied": True, "exit": 0}
+
