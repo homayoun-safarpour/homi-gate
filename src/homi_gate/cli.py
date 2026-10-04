@@ -1,5 +1,4 @@
 """homi-gate CLI — fail-closed checks for completion, handoff, MCP allowlist, tool correctness, spans (A2E), trajectory, prewrite."""
-
 from __future__ import annotations
 
 import argparse
@@ -157,7 +156,7 @@ def check_handoff(path: Path) -> list[str]:
         elif isinstance(val, str) and not val.strip():
             reasons.append(f"{field} is empty string")
         elif isinstance(val, (list, dict)) and len(val) == 0 and field in ("proved",):
-            # proved may be empty list if nothing proved yet — allow, but pending must be set
+            # proved may be empty list if nothing proved yet - allow, but pending must be set
             pass
 
     # Explicit anti-pattern from hire signals: context:null with no substitute
@@ -234,7 +233,7 @@ def check_mcp_allowlist(path: Path) -> list[str]:
     elif not isinstance(allow, list):
         reasons.append("allowlist must be a list")
     elif len(allow) == 0:
-        reasons.append("allowlist is empty — fail-closed requires at least one named tool")
+        reasons.append("allowlist is empty - fail-closed requires at least one named tool")
     elif not all(isinstance(t, str) and t.strip() for t in allow):
         reasons.append("allowlist entries must be non-empty strings")
 

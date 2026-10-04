@@ -1,39 +1,40 @@
 # homi-gate
 
-Agent CI often stays green while the run is truncated, the next worker gets `context: null`, or MCP exposes every tool. Those are contract failures. They do not need an LLM judge.
+**CI stays green while the agent run was truncated, the handoff is null, or MCP exposed every tool. This fails those three.**
 
-**homi-gate** is a thin, fail-closed CLI: seven deterministic checks, exit `0` or `1`, no model in the loop.
+Homayoun Safarpour
 
-1. **Completion bit** — truncated / incomplete receipts fail  
-2. **Handoff contract** — null context and missing stop fields fail  
-3. **MCP allowlist** — “enable the whole server” shapes fail  
-4. **Tool correctness** *(field-remix-1)* — `tools_called` vs `expected_tools`, wrong-tool=0  
-5. **Spans / two-zero** *(field-remix-3 / A2E)* — OTel-style parent→tool spans + early-stall vs late-malform split  
-6. **Trajectory match** *(field-remix-4 / AgentEvals)* — `strict` ordered equality; `subset`/`superset` order-free bags  
-7. **Pre-write** — a proposed tool call is checked against a declarative rule before the write; uncovered writes and judge-only receipts fail  
+[![CI](https://github.com/homayoun-safarpour/homi-gate/actions/workflows/ci.yml/badge.svg)](https://github.com/homayoun-safarpour/homi-gate/actions/workflows/ci.yml)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-[Why these gates](docs/MARKET.md) · MIT
+Fail-closed CI checks for truncated agent runs, null handoffs, and open MCP tools.
 
+```bash
+git clone https://github.com/homayoun-safarpour/homi-gate
+cd homi-gate && pip install -e .
+homi-gate check-completion examples/fail.json
+```
+
+It exits 1. Real output:
+
+```
+FAIL check-completion: examples/fail.json
+  - truncated=true on final record
+  - completion_bit=false
+```
 ---
 
-## Install
+## The three checks
 
-Python ≥ 3.11. From this repo:
+No model in the loop. Exit `0` or `1`.
+| Command | Pass when | Fail when |
+| --- | --- | --- |
+| `check-completion` | `completion_bit: true` (or `complete: true`), or a known complete `status` | `truncated: true` / incomplete status / missing bit+status |
+| `check-handoff` | required fields present and non-null; exactly one `pending` | `context: null`; missing `stop` / `proved` |
+| `check-mcp-allowlist` | allowlist **and** denylist, **or** `enabled: false` with named tools | open "enable whole server" shape |
 
-```bash
-pip install -e ".[dev]"
-homi-gate --help
-```
-
-Or without installing:
-
-```bash
-PYTHONPATH=src python -m homi_gate --help
-```
-
-No API key. Offline.
-
-## Quick start
+Handoff required fields: `from_agent`, `to_agent`, `proved`, `pending`, `stop`, `forbidden`, `report` (aliases `from` / `to` accepted). Receipts may be JSON, a JSON list, or JSONL (final record wins for completion).
 
 Should pass:
 
@@ -54,8 +55,7 @@ Should fail (exit `1`, reasons on stderr):
 ```bash
 homi-gate check-completion examples/fail.json
 homi-gate check-completion examples/soft_done_no_artifact.json
-homi-gate check-completion examples/doppelganger.jsonl
-homi-gate check-handoff examples/handoff_bad.json
+homi-gate check-completion examples/doppelganger.jsonlhomi-gate check-handoff examples/handoff_bad.json
 homi-gate check-handoff examples/handoff_transcript_dump.json
 homi-gate check-mcp-allowlist examples/mcp_bad.yaml
 homi-gate check-tools examples/tools_wrong.json
@@ -82,10 +82,7 @@ Also covered: `examples/pass.jsonl`, `examples/mcp_disabled_ok.yaml` (explicitly
 | `check-trajectory` | `strict` actual equals expected in order; `subset` every actual call is in expected (bag, order ignored), no extras; `superset` every expected call appears in actual (bag, order ignored), extras allowed | extra on strict or subset / missing on strict or superset / reorder on strict / judge score with no trajectory |
 
 Handoff required fields: `from_agent`, `to_agent`, `proved`, `pending`, `stop`, `forbidden`, `report` (aliases `from` / `to` accepted). Receipts may be JSON, a JSON list, or JSONL. Completion still inspects the final record for bit/status/artifact, but mid-stream `truncated: true` stream-vetoes a later green final (see `examples/doppelganger.jsonl`).
-
 ## CI
-
-Wire into any repo:
 
 ```yaml
 - run: pip install -e ".[dev]"
@@ -152,14 +149,13 @@ Soft / LLM lifecycle petals stay optional companions and **never ACCEPT alone** 
 
 Tool-call match aligned with [Agent Evals](https://docs.langchain.com/oss/python/langchain/test/evals) (and LangSmith trajectory docs). `--mode strict` is ordered equality — fails on extra, missing, or reorder. `--mode subset` and `--mode superset` are **order-free bags** like the primary: subset fails only on extras (shorter actual ok); superset fails only when an expected call is missing (extras ok). Optional args are pinned only when expected declares them. A `score` / judge field is ignored. `unordered` (equal bags either way) is not shipped.
 
-
 ## Non-goals
 
-- Not a full eval framework  
-- Not an LLM-as-judge or judge calibrator  
-- Not a RAG scorer  
-- Not a hosted SaaS / observability platform  
-- Not a substitute for human review on regulated paths  
+- Not a full eval framework
+- Not an LLM-as-judge or judge calibrator
+- Not a RAG scorer
+- Not a hosted SaaS / observability platform
+- Not a substitute for human review on regulated paths
 
 ## Falsifier
 
@@ -178,7 +174,6 @@ Build-in-public drafts (manual post only): [CONTENT/FOLLOWERS.md](CONTENT/FOLLOW
 ## License
 
 MIT — [LICENSE](LICENSE).
-
 ## Safety
 
 Examples are public/synthetic. No secrets. Nothing in `CONTENT/` is auto-published.

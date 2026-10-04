@@ -12,6 +12,6 @@ Sources: PAPER-G (ECT 2608.23623) · RD-G (silent handoff) · LN-G teach · DC-G
 | RD A2 payload-diff (optional next) | extend `check-handoff` or sibling check | span-green without payload receipt |
 | RD A3 completion-ack durable+ack | extend `check-completion` | silence accepted as done |
 
-**Law:** Evals measure quality. Gates authorize stop. Det only — no LLM-as-judge in the gate.
+**Law:** Evals measure quality. Gates authorize stop. Det only - no LLM-as-judge in the gate.
 
 **Next code slice (Hub):** harden fixtures for soft_done_no_artifact + transcript_dump_as_handoff if missing; keep README failure-first.
