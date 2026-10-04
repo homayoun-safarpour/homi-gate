@@ -33,7 +33,8 @@ jobs:
       - name: Pytest
         run: pytest -q
 
-      - name: Demo CLI — expect PASS (all check-*)        run: |
+      - name: Demo CLI — expect PASS (all check-*)
+        run: |
           set -euo pipefail
           homi-gate check-completion examples/pass.json
           homi-gate check-completion examples/pass.jsonl
@@ -49,7 +50,8 @@ jobs:
           ok=$(homi-gate check-prewrite examples/prewrite_cancel_ok.json)
           printf '%s\n' "$ok" | python -c 'import json,sys; d=json.load(sys.stdin); assert d=={"applied": True, "exit": 0}, d'
 
-      - name: Demo CLI — expect FAIL (fail-closed smokes)        run: |
+      - name: Demo CLI — expect FAIL (fail-closed smokes)
+        run: |
           set -euo pipefail
           # Each must exit non-zero; `!` inverts so the step stays green when gates fail correctly
           ! homi-gate check-completion examples/fail.json
