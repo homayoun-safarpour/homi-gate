@@ -16,12 +16,16 @@ jobs:
   det:
     name: det (every PR)
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python-version }}
 
       - name: Install
         run: pip install -e ".[dev]"
@@ -29,8 +33,7 @@ jobs:
       - name: Pytest
         run: pytest -q
 
-      - name: Demo CLI — expect PASS (all check-*)
-        run: |
+      - name: Demo CLI — expect PASS (all check-*)        run: |
           set -euo pipefail
           homi-gate check-completion examples/pass.json
           homi-gate check-completion examples/pass.jsonl
@@ -46,8 +49,7 @@ jobs:
           ok=$(homi-gate check-prewrite examples/prewrite_cancel_ok.json)
           printf '%s\n' "$ok" | python -c 'import json,sys; d=json.load(sys.stdin); assert d=={"applied": True, "exit": 0}, d'
 
-      - name: Demo CLI — expect FAIL (fail-closed smokes)
-        run: |
+      - name: Demo CLI — expect FAIL (fail-closed smokes)        run: |
           set -euo pipefail
           # Each must exit non-zero; `!` inverts so the step stays green when gates fail correctly
           ! homi-gate check-completion examples/fail.json
