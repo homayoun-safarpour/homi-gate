@@ -8,12 +8,16 @@ on:
 jobs:
   test-and-demo:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python-version }}
 
       - name: Install
         run: pip install -e ".[dev]"
@@ -21,7 +25,7 @@ jobs:
       - name: Pytest
         run: pytest -q
 
-      - name: Demo CLI — expect PASS
+      - name: Demo CLI - expect PASS
         run: |
           homi-gate check-completion examples/pass.json
           homi-gate check-completion examples/pass.jsonl
@@ -29,7 +33,7 @@ jobs:
           homi-gate check-mcp-allowlist examples/mcp_ok.yaml
           homi-gate check-mcp-allowlist examples/mcp_disabled_ok.yaml
 
-      - name: Demo CLI — expect FAIL (fail-closed)
+      - name: Demo CLI - expect FAIL (fail-closed)
         run: |
           # These must exit non-zero; `!` inverts so the step stays green when gates fail correctly
           ! homi-gate check-completion examples/fail.json

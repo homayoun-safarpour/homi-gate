@@ -1,16 +1,16 @@
 # Why these gates
 
-Agent CI often stays green while the run is truncated, the next worker gets `context: null`, or MCP exposes every tool. Those are contract failures — they do not need an LLM judge.
+Agent CI often stays green while the run is truncated, the next worker gets `context: null`, or MCP exposes every tool. Those are contract failures - they do not need an LLM judge.
 
 ## Signals (public hiring + production writing, 2026)
 
 Live Ireland / EU AI engineering roles and practitioner notes keep asking for the same shape:
 
-1. **Eval harness + release gates** — regression that can go red before merge  
-2. **MCP / tool contracts** — named allowlist (wrong-tool toward zero), not “enable the whole server”  
-3. **Agents that stop** — completion is a receipt field, not a vibe  
-4. **Handoff boundaries** — silent null context while spans look healthy is a known multi-agent fail class  
-5. **Asserts over logos** — a green bar beats naming a framework
+1. **Eval harness + release gates** - regression that can go red before merge  
+2. **MCP / tool contracts** - named allowlist (wrong-tool toward zero), not “enable the whole server”  
+3. **Agents that stop** - completion is a receipt field, not a vibe  
+4. **Handoff boundaries** - silent null context while spans look healthy is a known multi-agent fail class  
+5. **Asserts over logos** - a green bar beats naming a framework
 
 ## Mapping
 
@@ -22,7 +22,7 @@ Live Ireland / EU AI engineering roles and practitioner notes keep asking for th
 
 ## Falsifier
 
-If the example fixtures in this repo do not produce exit `1` on the bad paths, the product claim is false — fix or delete.
+If the example fixtures in this repo do not produce exit `1` on the bad paths, the product claim is false - fix or delete.
 
 ## What this is not
 

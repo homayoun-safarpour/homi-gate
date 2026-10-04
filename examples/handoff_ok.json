@@ -4,6 +4,6 @@
   "proved": ["fetched_public_jd_table", "kill_stale_mirrors"],
   "pending": "draft hire-prep pack from top-5 gaps",
   "stop": "no LinkedIn login; no applications",
-  "forbidden": ["secrets", "auto-post", "23-100"],
-  "report": "compact handoff — not a transcript dump"
+  "forbidden": ["secrets", "auto-post", "unpublished-manuscript"],
+  "report": "compact handoff, not a transcript dump"
 }
