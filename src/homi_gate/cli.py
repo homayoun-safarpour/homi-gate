@@ -1067,6 +1067,35 @@ def _run_prewrite(path: Path) -> int:
 
 # --- CLI wiring -------------------------------------------------------------
 
+# --- MCP CallToolResult ----------------------------------------------------
+
+
+def check_tool_result(path: Path) -> list[str]:
+    """MCP CallToolResult: isError true is a failed call, even with content.
+
+    Omitted isError means success (per the MCP schema). A non-bool isError
+    fails closed rather than guessing.
+    """
+    reasons: list[str] = []
+    for i, rec in enumerate(_load_json_or_jsonl(path)):
+        tag = f"record[{i}]"
+        if not isinstance(rec, dict):
+            reasons.append(f"{tag}: CallToolResult must be an object")
+            continue
+        content = rec.get("content")
+        if not isinstance(content, list):
+            reasons.append(f"{tag}: content must be a list")
+        is_error = rec.get("isError", False)
+        if is_error is True:
+            n = len(content) if isinstance(content, list) else 0
+            reasons.append(
+                f"{tag}: isError=true (tool call failed; {n} content item(s) do not make it a success)"
+            )
+        elif not isinstance(is_error, bool):
+            reasons.append(f"{tag}: isError must be bool, got {type(is_error).__name__}")
+    return reasons
+
+
 def _run_check(name: str, path: Path, checker) -> int:
     try:
         reasons = checker(path)
@@ -1159,6 +1188,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_pre.add_argument("path", type=Path, help="JSON or JSONL proposed call + state + rules")
 
+    p_tr = sub.add_parser(
+        "check-tool-result",
+        help="Fail if an MCP CallToolResult has isError true, even when content is non-empty",
+    )
+    p_tr.add_argument("path", type=Path, help="JSON or JSONL MCP CallToolResult")
+
     args = parser.parse_args(argv)
     if args.command == "check-completion":
         return _run_check("check-completion", args.path, check_completion)
@@ -1178,6 +1213,8 @@ def main(argv: list[str] | None = None) -> int:
             args.path,
             lambda p: check_trajectory(p, mode=args.mode),
         )
+    if args.command == "check-tool-result":
+        return _run_check("check-tool-result", args.path, check_tool_result)
     if args.command == "check-prewrite":
         return _run_prewrite(args.path)
     if args.command == "check-spans":
