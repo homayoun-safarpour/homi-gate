@@ -1,8 +1,10 @@
 # homi-gate
 
-**CI stays green while the agent run was truncated, the handoff is null, or MCP exposed every tool. This fails those three.**
-
 Homayoun Safarpour
+
+[![M8ven](https://m8ven.ai/badge/mcp/homayoun-safarpour/homi-gate?variant=verified)](https://m8ven.ai/mcp/homayoun-safarpour/homi-gate?s=readme)
+
+**CI stays green while the agent run was truncated, the handoff is null, or MCP exposed every tool. This fails those three.**
 
 [![CI](https://github.com/homayoun-safarpour/homi-gate/actions/workflows/ci.yml/badge.svg)](https://github.com/homayoun-safarpour/homi-gate/actions/workflows/ci.yml)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
@@ -97,16 +99,16 @@ Handoff required fields: `from_agent`, `to_agent`, `proved`, `pending`, `stop`, 
     homi-gate check-trajectory --mode strict path/to/trajectory.json
 ```
 
-This repository’s **det** workflow: [.github/workflows/ci.yml](.github/workflows/ci.yml) — pytest + every `check-*` on pass fixtures **and** fail-fixture smokes (`!` invert → exit 1 expected).
+This repository’s **det** workflow ([.github/workflows/ci.yml](.github/workflows/ci.yml)): pytest + every `check-*` on pass fixtures **and** fail-fixture smokes (`!` invert → exit 1 expected).
 
 ### Two-speed CI (field-remix-2 / Autonoma)
 
 | Lane | When | What | ACCEPT? |
 |------|------|------|---------|
-| **Det** | every PR / push | `pytest` + `homi-gate check-*` exit codes | Yes — authorize stop |
+| **Det** | every PR / push | `pytest` + `homi-gate check-*` exit codes | Yes (authorize stop) |
 | **Soft** | merge / nightly optional | LLM / judge companion (stub: [soft-lane.yml](.github/workflows/soft-lane.yml)) | **Never alone** |
 
-Pattern from [Autonoma — How to run LLM evals in CI/CD](https://getautonoma.com/blog/how-to-run-llm-evals-in-ci-cd) (det every commit; evals merge + nightly). Homi map: det = `check-*`; soft = optional companion. **PAPER-032**: soft / judge never ACCEPT alone.
+Pattern from [Autonoma (How to run LLM evals in CI/CD)](https://getautonoma.com/blog/how-to-run-llm-evals-in-ci-cd) (det every commit; evals merge + nightly). Homi map: det = `check-*`; soft = optional companion. **PAPER-032**: soft / judge never ACCEPT alone.
 
 **Falsifier:** skip-when-no-key still green = theater. The soft stub is `workflow_dispatch` only, `continue-on-error: false`, and **exits 1** when `LLM_API_KEY` is missing (skip ≠ pass) or when no real eval runner is wired. Soft never greens by skipping keys.
 
@@ -116,7 +118,7 @@ Use this **beside** full eval stacks (Promptfoo, DeepEval, Ragas, judge harnesse
 
 ### Optional: Promptfoo quality evals (beside Homi Gate)
 
-Contracts stay here. For prompt/agent **quality** in CI, add Promptfoo with **deterministic** asserts (`not-contains` / `is-json` / trajectory tool checks) and `--fail-on-error` — never LLM-rubric alone for green. See Promptfoo [CI/CD](https://www.promptfoo.dev/docs/integrations/ci-cd/) + [asserts](https://www.promptfoo.dev/docs/configuration/expected-outputs/). Companion trajectory match: LangChain AgentEvals (Course 031).
+Contracts stay here. For prompt/agent **quality** in CI, add Promptfoo with **deterministic** asserts (`not-contains` / `is-json` / trajectory tool checks) and `--fail-on-error` (never LLM-rubric alone for green). See Promptfoo [CI/CD](https://www.promptfoo.dev/docs/integrations/ci-cd/) + [asserts](https://www.promptfoo.dev/docs/configuration/expected-outputs/). Companion trajectory match: LangChain AgentEvals (Course 031).
 
 Then still run Homi Gate on receipts (completion · handoff · MCP · tools · spans · trajectory).
 
@@ -124,18 +126,18 @@ Then still run Homi Gate on receipts (completion · handoff · MCP · tools · s
 
 ### Field-remix: `check-tools` (wrong-tool=0)
 
-Deterministic `tools_called` vs `expected_tools` — names-only by default, optional `--exact-args`. Exit `0`/`1`, **no LLM in the loop**. Soft-DONE still fails if judge-alone.
+Deterministic `tools_called` vs `expected_tools` (names-only by default, optional `--exact-args`). Exit `0`/`1`, **no LLM in the loop**. Soft-DONE still fails if judge-alone.
 
 Public pattern sources (FN-ENGINE2):
 
-- [Promptfoo — Mock Tool Execution / hermetic `toolMocks`](https://www.promptfoo.dev/docs/providers/openai-agents/)
-- [DeepEval — ToolCorrectnessMetric (det-first)](https://deepeval.com/docs/metrics-tool-correctness)
+- [Promptfoo (Mock Tool Execution / hermetic `toolMocks`)](https://www.promptfoo.dev/docs/providers/openai-agents/)
+- [DeepEval (ToolCorrectnessMetric, det-first)](https://deepeval.com/docs/metrics-tool-correctness)
 
-Evals measure; gates authorize. This check is the gate slice of those field tactics — not a full eval framework.
+Evals measure; gates authorize. This check is the gate slice of those field tactics (not a full eval framework).
 
 ### Field-remix-3: `check-spans` (A2E thin det · soft never alone)
 
-Cite [PAPER-FIELD-REMIX-3](https://arxiv.org/abs/2608.07346) A2E — ship **only** the deterministic slice (no LLM judge / no full A2E DB/UI):
+Cite [PAPER-FIELD-REMIX-3](https://arxiv.org/abs/2608.07346) A2E. Ship **only** the deterministic slice (no LLM judge / no full A2E DB/UI):
 
 | ID | Assert | Gate |
 |----|--------|------|
@@ -147,7 +149,7 @@ Soft / LLM lifecycle petals stay optional companions and **never ACCEPT alone** 
 
 ### Field-remix-4: `check-trajectory` (strict / subset / superset, det-first)
 
-Tool-call match aligned with [Agent Evals](https://docs.langchain.com/oss/python/langchain/test/evals) (and LangSmith trajectory docs). `--mode strict` is ordered equality — fails on extra, missing, or reorder. `--mode subset` and `--mode superset` are **order-free bags** like the primary: subset fails only on extras (shorter actual ok); superset fails only when an expected call is missing (extras ok). Optional args are pinned only when expected declares them. A `score` / judge field is ignored. `unordered` (equal bags either way) is not shipped.
+Tool-call match aligned with [Agent Evals](https://docs.langchain.com/oss/python/langchain/test/evals) (and LangSmith trajectory docs). `--mode strict` is ordered equality (fails on extra, missing, or reorder). `--mode subset` and `--mode superset` are **order-free bags** like the primary: subset fails only on extras (shorter actual ok); superset fails only when an expected call is missing (extras ok). Optional args are pinned only when expected declares them. A `score` / judge field is ignored. `unordered` (equal bags either way) is not shipped.
 
 ## Non-goals
 
@@ -173,7 +175,7 @@ Build-in-public drafts (manual post only): [CONTENT/FOLLOWERS.md](CONTENT/FOLLOW
 
 ## License
 
-MIT — [LICENSE](LICENSE).
+MIT ([LICENSE](LICENSE)).
 ## Safety
 
 Examples are public/synthetic. No secrets. Nothing in `CONTENT/` is auto-published.

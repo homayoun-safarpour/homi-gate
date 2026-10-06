@@ -18,6 +18,12 @@ def test_readme_first_screen_matches_top100_craft():
     head = "\n".join(README.splitlines()[:26])
     assert "# homi-gate" in head
     assert "Homayoun Safarpour" in head
+    badge = (
+        "[![M8ven](https://m8ven.ai/badge/mcp/homayoun-safarpour/homi-gate"
+        "?variant=verified)](https://m8ven.ai/mcp/homayoun-safarpour/homi-gate?s=readme)"
+    )
+    assert badge in head
+    assert "variant=verified" in badge
     assert "git clone https://github.com/homayoun-safarpour/homi-gate" in head
     assert "pip install -e" in head
     assert "homi-gate check-completion examples/fail.json" in head

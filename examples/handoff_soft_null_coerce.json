@@ -4,7 +4,7 @@
   "proved": [],
   "pending": "continue research from prior",
   "stop": "no secrets; no auto-post",
-  "forbidden": ["secrets", "23-100"],
+  "forbidden": ["secrets", "unpublished-manuscript"],
   "report": "spans green — LangSmith OK",
   "context": {}
 }
