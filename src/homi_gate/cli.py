@@ -1070,29 +1070,160 @@ def _run_prewrite(path: Path) -> int:
 # --- MCP CallToolResult ----------------------------------------------------
 
 
-def check_tool_result(path: Path) -> list[str]:
-    """MCP CallToolResult: isError true is a failed call, even with content.
+# Reason codes for check-tool-result (distinct; soft never alone).
+REASON_IS_ERROR = "is_error"
+REASON_SCHEMA_MISMATCH = "schema_mismatch"
+REASON_MISSING_STRUCTURED = "missing_structured"
+
+
+def _tool_output_schema(tool: dict[str, Any] | None) -> Any:
+    """Return outputSchema from a Tool object, or None if undeclared."""
+    if not isinstance(tool, dict):
+        return None
+    if "outputSchema" in tool:
+        return tool["outputSchema"]
+    if "output_schema" in tool:
+        return tool["output_schema"]
+    return None
+
+
+def _resolve_output_schema(
+    rec: dict[str, Any], tool: dict[str, Any] | None = None
+) -> Any:
+    """Prefer explicit --tool / tool arg; else nested tool / top-level on receipt."""
+    schema = _tool_output_schema(tool)
+    if schema is not None:
+        return schema
+    nested = rec.get("tool")
+    if isinstance(nested, dict):
+        schema = _tool_output_schema(nested)
+        if schema is not None:
+            return schema
+    if "outputSchema" in rec:
+        return rec["outputSchema"]
+    if "output_schema" in rec:
+        return rec["output_schema"]
+    return None
+
+
+def _call_tool_result_body(rec: dict[str, Any]) -> dict[str, Any]:
+    """Unwrap {tool, result} receipts; otherwise treat rec as CallToolResult."""
+    inner = rec.get("result")
+    if isinstance(inner, dict) and any(
+        k in inner for k in ("content", "structuredContent", "structured_content", "isError")
+    ):
+        return inner
+    return rec
+
+
+def _structured_content(body: dict[str, Any]) -> tuple[bool, Any]:
+    """Return (present, value). Accept camelCase and snake_case keys."""
+    if "structuredContent" in body:
+        return True, body["structuredContent"]
+    if "structured_content" in body:
+        return True, body["structured_content"]
+    return False, None
+
+
+def evaluate_tool_result(
+    rec: dict[str, Any],
+    tool: dict[str, Any] | None = None,
+    *,
+    tag: str = "record",
+) -> list[str]:
+    """Validate one MCP CallToolResult (+ optional Tool with outputSchema).
+
+    Rules (MCP 2025-06-18 tools + python-sdk client validation):
+    - isError true -> reason is_error; SKIP schema (even if outputSchema declared).
+    - non-bool isError -> fail closed.
+    - outputSchema declared and isError false/omitted:
+        missing structuredContent -> missing_structured
+        structuredContent fails jsonschema -> schema_mismatch
+        structuredContent valid -> pass (extra fields OK unless additionalProperties:false)
+    - no outputSchema -> unstructured text alone is OK (exit 0 path).
+    Validate structuredContent only — never trust text content as a schema substitute.
+    """
+    reasons: list[str] = []
+    if not isinstance(rec, dict):
+        reasons.append(f"{tag}: CallToolResult must be an object")
+        return reasons
+
+    body = _call_tool_result_body(rec)
+    content = body.get("content")
+    if not isinstance(content, list):
+        reasons.append(f"{tag}: content must be a list")
+
+    is_error = body.get("isError", False)
+    if is_error is True:
+        n = len(content) if isinstance(content, list) else 0
+        reasons.append(
+            f"{tag}: {REASON_IS_ERROR}: isError=true "
+            f"(tool call failed; {n} content item(s) do not make it a success)"
+        )
+        return reasons  # skip schema when isError wins
+    if not isinstance(is_error, bool):
+        reasons.append(f"{tag}: isError must be bool, got {type(is_error).__name__}")
+        return reasons
+
+    schema = _resolve_output_schema(rec, tool)
+    if schema is None:
+        return reasons  # no outputSchema: unstructured control stays green
+
+    if not isinstance(schema, dict):
+        reasons.append(
+            f"{tag}: {REASON_SCHEMA_MISMATCH}: outputSchema must be an object, "
+            f"got {type(schema).__name__}"
+        )
+        return reasons
+
+    present, structured = _structured_content(body)
+    if not present or structured is None:
+        reasons.append(
+            f"{tag}: {REASON_MISSING_STRUCTURED}: outputSchema declared but "
+            f"structuredContent is missing (isError false/omitted)"
+        )
+        return reasons
+
+    try:
+        import jsonschema
+    except ImportError as exc:  # pragma: no cover
+        raise RuntimeError(
+            "jsonschema required for outputSchema validation; pip install jsonschema"
+        ) from exc
+
+    try:
+        jsonschema.validate(instance=structured, schema=schema)
+    except jsonschema.ValidationError as exc:
+        reasons.append(
+            f"{tag}: {REASON_SCHEMA_MISMATCH}: structuredContent failed outputSchema: "
+            f"{exc.message}"
+        )
+    except jsonschema.SchemaError as exc:
+        reasons.append(
+            f"{tag}: {REASON_SCHEMA_MISMATCH}: invalid outputSchema: {exc.message}"
+        )
+    return reasons
+
+
+def check_tool_result(path: Path, *, tool_path: Path | None = None) -> list[str]:
+    """MCP CallToolResult: isError true fails; optional outputSchema vs structuredContent.
 
     Omitted isError means success (per the MCP schema). A non-bool isError
-    fails closed rather than guessing.
+    fails closed rather than guessing. When a tool declares outputSchema and
+    the result is not an error, structuredContent must be present and valid
+    (jsonschema). Reason codes: is_error, schema_mismatch, missing_structured.
     """
+    tool: dict[str, Any] | None = None
+    if tool_path is not None:
+        raw = json.loads(tool_path.read_text(encoding="utf-8"))
+        if not isinstance(raw, dict):
+            raise ValueError(f"tool definition must be a JSON object: {tool_path}")
+        tool = raw
+
     reasons: list[str] = []
     for i, rec in enumerate(_load_json_or_jsonl(path)):
         tag = f"record[{i}]"
-        if not isinstance(rec, dict):
-            reasons.append(f"{tag}: CallToolResult must be an object")
-            continue
-        content = rec.get("content")
-        if not isinstance(content, list):
-            reasons.append(f"{tag}: content must be a list")
-        is_error = rec.get("isError", False)
-        if is_error is True:
-            n = len(content) if isinstance(content, list) else 0
-            reasons.append(
-                f"{tag}: isError=true (tool call failed; {n} content item(s) do not make it a success)"
-            )
-        elif not isinstance(is_error, bool):
-            reasons.append(f"{tag}: isError must be bool, got {type(is_error).__name__}")
+        reasons.extend(evaluate_tool_result(rec, tool, tag=tag))
     return reasons
 
 
@@ -1190,9 +1321,16 @@ def main(argv: list[str] | None = None) -> int:
 
     p_tr = sub.add_parser(
         "check-tool-result",
-        help="Fail if an MCP CallToolResult has isError true, even when content is non-empty",
+        help="Fail if CallToolResult isError true, or structuredContent fails declared outputSchema",
     )
-    p_tr.add_argument("path", type=Path, help="JSON or JSONL MCP CallToolResult")
+    p_tr.add_argument("path", type=Path, help="JSON or JSONL MCP CallToolResult (or {tool, result})")
+    p_tr.add_argument(
+        "--tool",
+        type=Path,
+        default=None,
+        dest="tool_path",
+        help="Optional Tool JSON with outputSchema (MCP 2025-06-18); validates structuredContent",
+    )
 
     args = parser.parse_args(argv)
     if args.command == "check-completion":
@@ -1214,7 +1352,11 @@ def main(argv: list[str] | None = None) -> int:
             lambda p: check_trajectory(p, mode=args.mode),
         )
     if args.command == "check-tool-result":
-        return _run_check("check-tool-result", args.path, check_tool_result)
+        return _run_check(
+            "check-tool-result",
+            args.path,
+            lambda p: check_tool_result(p, tool_path=args.tool_path),
+        )
     if args.command == "check-prewrite":
         return _run_prewrite(args.path)
     if args.command == "check-spans":
