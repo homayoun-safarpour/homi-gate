@@ -28,7 +28,11 @@ def run_guarded(payload: dict[str, Any], tools: dict[str, Callable[..., Any]]) -
     if reasons:
         raise Denied(reasons)
     proposed = payload["proposed"]
-    name = proposed["name"]
+    # Use the same normalization as evaluate_prewrite; do not mutate the receipt.
+    name = proposed["name"].strip()
     if name not in tools:
         raise Denied([f"no tool registered for {name!r}"])
-    return tools[name](**proposed.get("args", {}))
+    args = proposed.get("args")
+    if args is None:
+        args = {}
+    return tools[name](**args)
