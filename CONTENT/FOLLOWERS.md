@@ -15,7 +15,7 @@ I’ve been reading Dublin/Ireland AI eng JDs. The hire signal isn’t “we use
 - MCP wrong-tool = 0  
 - agents that actually stop  
 
-Open-sourced a tiny gate tonight: **homi-gate** — fail-closed checks for completion, handoff, MCP allowlist, tools, spans, and trajectory.
+Open-sourced a tiny gate tonight: **homi-gate**, fail-closed checks for completion, handoff, MCP allowlist, tools, spans, and trajectory.
 Completion ≠ satisfaction. If the receipt says truncated, CI should go red.
 
 https://github.com/homayoun-safarpour/homi-gate
