@@ -1,4 +1,4 @@
-"""homi-gate CLI — fail-closed checks for completion, handoff, MCP allowlist, tool correctness, spans (A2E), trajectory, prewrite."""
+"""homi-gate CLI: fail-closed checks for completion, handoff, MCP allowlist, tool correctness, spans (A2E), trajectory, prewrite."""
 from __future__ import annotations
 
 import argparse
@@ -323,7 +323,7 @@ def check_tools(path: Path, *, exact_args: bool = False) -> list[str]:
     elif len(expected_raw) == 0:
         # claim asserts tools (tools_called present) or expected key exists empty
         reasons.append(
-            "empty expected_tools when claim asserts tools — fail-closed (no judge-alone green)"
+            "empty expected_tools when claim asserts tools, fail-closed (no judge-alone green)"
         )
 
     if reasons:
@@ -657,11 +657,11 @@ def assert_two_zero_split(
         )
     elif flags_a[0] and flags_b[0] and not (flags_a[1] or flags_b[1]):
         reasons.append(
-            "A3 assert_two_zero_split: both look like early stall — no discrimination"
+            "A3 assert_two_zero_split: both look like early stall, no discrimination"
         )
     elif flags_a[1] and flags_b[1] and not (flags_a[0] or flags_b[0]):
         reasons.append(
-            "A3 assert_two_zero_split: both look like late malform — no discrimination"
+            "A3 assert_two_zero_split: both look like late malform, no discrimination"
         )
 
     return reasons
@@ -861,7 +861,7 @@ def check_trajectory(path: Path, *, mode: str) -> list[str]:
 
     assert isinstance(expected_raw, list) and isinstance(actual_raw, list)
     if len(expected_raw) == 0:
-        return ["empty expected trajectory — fail-closed (no vacuous pass)"]
+        return ["empty expected trajectory, fail-closed (no vacuous pass)"]
 
     expected: list[tuple[str, str | None]] = []
     for i, entry in enumerate(expected_raw):
@@ -962,7 +962,7 @@ def _deny_fires(cond: Any, state: dict[str, Any], args: dict[str, Any]) -> tuple
         ok_l, left = _resolve_operand(val[0], state, args)
         ok_r, right = _resolve_operand(val[1], state, args)
         if not ok_l or not ok_r:
-            return True, f"{key} path missing — fail-closed"
+            return True, f"{key} path missing, fail-closed"
         fired = left == right if key == "eq" else left != right
         if fired:
             return True, f"{key} {val[0]!r} vs {val[1]!r}"
@@ -984,7 +984,7 @@ def _deny_fires(cond: Any, state: dict[str, Any], args: dict[str, Any]) -> tuple
         if ok_a:
             return True, f"forbidden field {field}"
         return False, ""
-    return True, f"unsupported deny_if {key!r} — fail-closed"
+    return True, f"unsupported deny_if {key!r}, fail-closed"
 
 
 def evaluate_prewrite(payload: dict[str, Any]) -> list[str]:
@@ -998,7 +998,7 @@ def evaluate_prewrite(payload: dict[str, Any]) -> list[str]:
         ]
     name = proposed.get("name")
     if not isinstance(name, str) or not name.strip():
-        return ["proposed.name missing — fail-closed"]
+        return ["proposed.name missing, fail-closed"]
     name = name.strip()
     args = proposed.get("args", {})
     if args is None:
@@ -1011,30 +1011,30 @@ def evaluate_prewrite(payload: dict[str, Any]) -> list[str]:
     if not isinstance(state, dict):
         return ["state must be an object"]
     if "rules" not in payload or payload["rules"] is None:
-        return ["missing rules — fail-closed"]
+        return ["missing rules, fail-closed"]
     rules = payload["rules"]
     if not isinstance(rules, list):
-        return ["rules must be a list — fail-closed"]
+        return ["rules must be a list, fail-closed"]
 
     is_write = proposed.get("write", True) is not False
     covered = False
     reasons: list[str] = []
     for i, rule in enumerate(rules):
         if not isinstance(rule, dict):
-            return [f"rules[{i}] must be an object — fail-closed"]
+            return [f"rules[{i}] must be an object, fail-closed"]
         tool = rule.get("tool")
         if not isinstance(tool, str) or not tool.strip():
-            return [f"rules[{i}].tool missing — fail-closed"]
+            return [f"rules[{i}].tool missing, fail-closed"]
         if tool.strip() != name:
             continue
         covered = True
         if "deny_if" not in rule:
-            return [f"rules[{i}] missing deny_if — fail-closed"]
+            return [f"rules[{i}] missing deny_if, fail-closed"]
         fired, why = _deny_fires(rule["deny_if"], state, args)
         if fired:
             reasons.append(f"deny {name}: {why}")
     if is_write and not covered:
-        reasons.append(f"write tool {name} has no covering rule — fail-closed")
+        reasons.append(f"write tool {name} has no covering rule, fail-closed")
     return reasons
 
 
@@ -1141,7 +1141,7 @@ def evaluate_tool_result(
         structuredContent fails jsonschema -> schema_mismatch
         structuredContent valid -> pass (extra fields OK unless additionalProperties:false)
     - no outputSchema -> unstructured text alone is OK (exit 0 path).
-    Validate structuredContent only — never trust text content as a schema substitute.
+    Validate structuredContent only, never trust text content as a schema substitute.
     """
     reasons: list[str] = []
     if not isinstance(rec, dict):
