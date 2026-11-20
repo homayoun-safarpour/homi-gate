@@ -13,8 +13,10 @@ def test_readme_h1_matches_repo_name():
 
 def test_readme_first_screen_matches_top100_craft():
     pip_at = README.find("pip install")
-    later_at = README.find("## The three checks")
+    later_at = README.find("## The problem")
     assert 0 <= pip_at < later_at
+    lines = [ln for ln in README.splitlines() if ln.strip()]
+    assert lines[1].startswith("**") and lines[1].endswith("**")
     head = "\n".join(README.splitlines()[:26])
     assert "# homi-gate" in head
     assert "Homayoun Safarpour" in head
