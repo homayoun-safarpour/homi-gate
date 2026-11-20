@@ -7,7 +7,7 @@
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-Fail-closed CI checks for truncated agent runs, null handoffs, and open MCP tools.
+Agent reliability: fail-closed CI checks for truncated agent runs, null handoffs, and open MCP tools.
 
 homi-gate, written by Homayoun Safarpour, is a set of eight command-line checks that read what an AI agent run leaves behind: its final receipt, its handoff, its MCP tool settings and its tool calls. We built it because unit tests check the code of an agent, whereas a run can stop halfway or pass empty context to the next agent while every test passes. Each check applies fixed rules with no model calls and treats a missing field or an unreadable file as a failure. It returns exit 0 on a pass and exit 1 with the reasons, so that a CI job can block the merge.
 
@@ -24,6 +24,10 @@ FAIL check-completion: examples/fail.json
 ```
 
 That command exits 1. The same check on `examples/pass.json` prints `PASS check-completion: examples/pass.json` and exits 0.
+
+![homi-gate: run receipt is checked by completion check; the result is FAIL with exit 1](docs/readme-flow.svg)
+
+[How it works](#how-it-works) · [Results](#what-each-result-means) · [Limits](#limits) · [Cite](#citation) · Part of [a small open stack for checking AI agents and their judges](https://homayoun-safarpour.github.io)
 
 ## What each result means
 
