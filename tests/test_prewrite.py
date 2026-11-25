@@ -56,10 +56,12 @@ def test_forbidden_field_fails_and_readonly_without_covering_rule():
     reasons = check_prewrite(EXAMPLES / "prewrite_forbidden.json")
     assert any("forbidden field ssn" in r for r in reasons)
     assert main(["check-prewrite", str(EXAMPLES / "prewrite_forbidden.json")]) == 1
+    # The proposal's own write:false no longer skips the rules; a read-only
+    # call passes only when a rule marks that tool read_only.
     readonly = {
         "proposed": {"name": "get_reservation", "write": False, "args": {"id": "R1"}},
         "state": {"refundable": False},
-        "rules": [],
+        "rules": [{"tool": "get_reservation", "read_only": True}],
     }
     assert evaluate_prewrite(readonly) == []
 
@@ -188,4 +190,65 @@ def test_denied_done_accept_is_not_applied(capsys):
     verdict = json.loads(capsys.readouterr().out.strip())
     assert code == verdict["exit"] == 0
     assert verdict == {"applied": True, "exit": 0}
+
+
+def test_write_false_flag_with_empty_rules_is_denied():
+    payload = {"proposed": {"name": "delete_repo", "write": False, "args": {}}, "rules": []}
+    reasons = evaluate_prewrite(payload)
+    assert any("rules is empty" in r for r in reasons)
+
+
+def test_write_false_flag_does_not_skip_covering_rule():
+    payload = {
+        "proposed": {"name": "delete_repo", "write": False, "args": {}},
+        "rules": [{"tool": "get_reservation", "read_only": True}],
+    }
+    reasons = evaluate_prewrite(payload)
+    assert any("delete_repo has no covering rule" in r for r in reasons)
+
+
+def test_cli_write_false_flag_with_empty_rules_exits_1(tmp_path, capsys):
+    p = tmp_path / "p1.json"
+    p.write_text(
+        '{"proposed":{"name":"delete_repo","write":false,"args":{}},"rules":[]}',
+        encoding="utf-8",
+    )
+    assert main(["check-prewrite", str(p)]) == 1
+    verdict = json.loads(capsys.readouterr().out.strip())
+    assert verdict["applied"] is False and verdict["exit"] == 1
+
+
+def test_read_only_rule_allows_covered_read():
+    payload = {
+        "proposed": {"name": "get_reservation", "args": {"id": "R1"}},
+        "rules": [{"tool": "get_reservation", "read_only": True}],
+    }
+    assert evaluate_prewrite(payload) == []
+
+
+def test_read_only_rule_still_applies_its_deny_if():
+    payload = {
+        "proposed": {"name": "get_reservation", "args": {"ssn": "x"}},
+        "rules": [
+            {"tool": "get_reservation", "read_only": True, "deny_if": {"forbidden": "ssn"}}
+        ],
+    }
+    assert any("forbidden field ssn" in r for r in evaluate_prewrite(payload))
+
+
+def test_limit_rules_in_the_payload_are_trusted():
+    """README Limits: a payload that brings its own read_only rule is allowed."""
+    payload = {
+        "proposed": {"name": "delete_repo", "args": {}},
+        "rules": [{"tool": "delete_repo", "read_only": True}],
+    }
+    assert evaluate_prewrite(payload) == []
+
+
+def test_read_only_must_be_boolean_true():
+    payload = {
+        "proposed": {"name": "get_reservation", "args": {}},
+        "rules": [{"tool": "get_reservation", "read_only": "yes"}],
+    }
+    assert any("missing deny_if" in r for r in evaluate_prewrite(payload))
 

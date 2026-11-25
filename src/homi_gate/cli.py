@@ -80,8 +80,14 @@ def check_completion(path: Path) -> list[str]:
 
     if last.get("truncated") is True:
         reasons.append("truncated=true on final record")
+    elif "truncated" in last and last["truncated"] is not False:
+        reasons.append(
+            f"truncated must be bool, got {type(last['truncated']).__name__} on final record"
+        )
 
-    bit = last.get("completion_bit", last.get("complete"))
+    bit = last.get("completion_bit")
+    if bit is None:
+        bit = last.get("complete")
     status = last.get("status")
     status_l = str(status).lower() if status is not None else None
 
@@ -90,12 +96,15 @@ def check_completion(path: Path) -> list[str]:
     elif bit is None:
         if status is None:
             reasons.append("missing completion_bit/complete and status")
-        elif status_l in _INCOMPLETE_STATUSES:
+    elif bit is not True:
+        reasons.append(f"completion_bit must be bool, got {type(bit).__name__}")
+
+    # A status, when present, must agree with the bit: it is read every time.
+    if status is not None:
+        if status_l in _INCOMPLETE_STATUSES:
             reasons.append(f"status={status!r} is incomplete")
         elif status_l not in _COMPLETE_STATUSES:
             reasons.append(f"status={status!r} not a known complete status")
-    elif bit is not True:
-        reasons.append(f"completion_bit must be bool, got {type(bit).__name__}")
 
     # Soft DONE: claiming complete (bit or known status) requires artifact/proof path
     claims_complete = bit is True or (
@@ -108,8 +117,9 @@ def check_completion(path: Path) -> list[str]:
 
     # Mid-stream truncate flag stream-vetoes a later green final (not final-record-wins)
     for i, rec in enumerate(records):
-        if rec.get("truncated") is True and i < len(records) - 1:
-            reasons.append(f"record[{i}] truncated=true before final record")
+        if "truncated" in rec and rec["truncated"] is not False and i < len(records) - 1:
+            shown = "true" if rec["truncated"] is True else repr(rec["truncated"])
+            reasons.append(f"record[{i}] truncated={shown} before final record")
             break
 
     return reasons
@@ -155,15 +165,23 @@ def check_handoff(path: Path) -> list[str]:
             reasons.append(f"{field} is null")
         elif isinstance(val, str) and not val.strip():
             reasons.append(f"{field} is empty string")
-        elif isinstance(val, (list, dict)) and len(val) == 0 and field in ("proved",):
-            # proved may be empty list if nothing proved yet - allow, but pending must be set
-            pass
+        elif (
+            isinstance(val, (list, dict))
+            and len(val) == 0
+            and field not in ("proved", "forbidden")
+        ):
+            # proved may be empty (nothing proved yet) and forbidden may be an
+            # explicit empty list (nothing forbidden); other fields must say something
+            reasons.append(f"{field} is empty {type(val).__name__}")
 
     # Explicit anti-pattern from hire signals: context:null with no substitute
     if "context" in payload and payload["context"] is None:
         reasons.append("context is null (pass compact proved/pending/stop instead)")
-    # Soft-null coerce: empty {} / [] keeps dashboards green (RD-G / CRED-1 score theater)
-    elif "context" in payload and isinstance(payload["context"], (dict, list)) and len(payload["context"]) == 0:
+    # Soft-null coerce: empty {} / [] / "" keeps dashboards green (RD-G / CRED-1 score theater)
+    elif "context" in payload and (
+        (isinstance(payload["context"], (dict, list)) and len(payload["context"]) == 0)
+        or (isinstance(payload["context"], str) and not payload["context"].strip())
+    ):
         reasons.append(
             "context is empty (soft-null coerce); pass compact proved/pending/stop instead"
         )
@@ -179,7 +197,13 @@ def check_handoff(path: Path) -> list[str]:
     if isinstance(pending, list):
         if len(pending) != 1:
             reasons.append(f"pending must be one goal, got list len={len(pending)}")
-    elif isinstance(pending, str) and "\n\n" in pending and len(pending) > 500:
+        elif not isinstance(pending[0], str) or not pending[0].strip():
+            reasons.append("pending must be one goal, got a list item that is not a non-empty string")
+        else:
+            pending = pending[0]
+    elif pending is not None and not isinstance(pending, str):
+        reasons.append(f"pending must be one goal string, got {type(pending).__name__}")
+    if isinstance(pending, str) and "\n\n" in pending and len(pending) > 500:
         reasons.append("pending looks like a transcript dump (>500 chars with blank lines)")
 
     return reasons
@@ -193,7 +217,11 @@ def _load_config(path: Path) -> dict[str, Any]:
     if suffix in (".yaml", ".yml"):
         if yaml is None:
             raise RuntimeError("PyYAML required for YAML configs; pip install pyyaml")
-        data = yaml.safe_load(text)
+        try:
+            data = yaml.safe_load(text)
+        except yaml.YAMLError as exc:
+            first = str(exc).strip().splitlines()[0] if str(exc).strip() else type(exc).__name__
+            raise ValueError(f"invalid YAML: {first}") from exc
     else:
         data = json.loads(text)
     if not isinstance(data, dict):
@@ -205,6 +233,20 @@ def _mcp_section(data: dict[str, Any]) -> dict[str, Any]:
     if "mcp" in data and isinstance(data["mcp"], dict):
         return data["mcp"]
     return data
+
+
+_WILDCARD_CHARS = frozenset("*?[]{}()|^$\\")
+_WILDCARD_WORDS = frozenset({"all", "any"})
+
+
+def _wildcard_entries(names: list[Any]) -> list[str]:
+    """Entries that match many tools (glob or regex characters, or all/any)."""
+    return [
+        n
+        for n in names
+        if isinstance(n, str)
+        and (any(c in _WILDCARD_CHARS for c in n) or n.strip().lower() in _WILDCARD_WORDS)
+    ]
 
 
 def check_mcp_allowlist(path: Path) -> list[str]:
@@ -223,10 +265,15 @@ def check_mcp_allowlist(path: Path) -> list[str]:
             reasons.append("enabled:false tools list must be a non-empty list of names")
         elif not all(isinstance(t, str) and t.strip() for t in tools):
             reasons.append("enabled:false tools must be non-empty strings")
+        elif _wildcard_entries(tools):
+            reasons.append(
+                f"enabled:false tools must be named tools, not a wildcard: {_wildcard_entries(tools)}"
+            )
         return reasons
 
     allow = mcp.get("allowlist")
-    deny = mcp.get("denylist") or mcp.get("blocklist")
+    # Key presence, not truthiness: an explicit empty denylist is allowed
+    deny = mcp["denylist"] if "denylist" in mcp else mcp.get("blocklist")
 
     if allow is None:
         reasons.append("missing allowlist (or set enabled:false with named tools)")
@@ -236,6 +283,10 @@ def check_mcp_allowlist(path: Path) -> list[str]:
         reasons.append("allowlist is empty - fail-closed requires at least one named tool")
     elif not all(isinstance(t, str) and t.strip() for t in allow):
         reasons.append("allowlist entries must be non-empty strings")
+    elif _wildcard_entries(allow):
+        reasons.append(
+            f"allowlist must name each tool, not a wildcard: {_wildcard_entries(allow)}"
+        )
 
     if deny is None:
         reasons.append("missing denylist/blocklist (or set enabled:false with named tools)")
@@ -244,7 +295,9 @@ def check_mcp_allowlist(path: Path) -> list[str]:
     # empty denylist is allowed (explicit empty = documented none-blocked)
 
     if isinstance(allow, list) and isinstance(deny, list):
-        overlap = sorted(set(allow) & set(deny))
+        overlap = sorted(
+            {t for t in allow if isinstance(t, str)} & {t for t in deny if isinstance(t, str)}
+        )
         if overlap:
             reasons.append(f"tools in both allowlist and denylist: {overlap}")
 
@@ -350,18 +403,26 @@ def check_tools(path: Path, *, exact_args: bool = False) -> list[str]:
     if reasons:
         return reasons
 
-    called_set = set(called_names)
-    expected_set = set(expected_names)
+    # Counts matter: a tool called more often than expected is not a match.
+    called_count = Counter(called_names)
+    expected_count = Counter(expected_names)
 
-    unexpected = sorted(called_set - expected_set)
-    missing = sorted(expected_set - called_set)
+    unexpected = sorted(set(called_count) - set(expected_count))
+    repeated = sorted(
+        f"{n} x{called_count[n]} (expected x{expected_count[n]})"
+        for n in called_count
+        if n in expected_count and called_count[n] > expected_count[n]
+    )
+    missing = sorted(set((expected_count - called_count).elements()))
 
     if unexpected:
         reasons.append(f"unexpected tools (wrong-tool=0): {unexpected}")
+    if repeated:
+        reasons.append(f"extra calls of expected tools: {repeated}")
     if missing:
         reasons.append(f"missing required tools: {missing}")
 
-    if exact_args and not unexpected and not missing:
+    if exact_args and not reasons:
         # Multiset match by name+args for expected entries that carry args
         def _sig(entry: Any) -> tuple[str, str]:
             name = _tool_name(entry) or ""
@@ -458,8 +519,8 @@ def _collect_parent_spans(spans: Any) -> list[dict[str, Any]]:
         return []
     parents: list[dict[str, Any]] = []
     for span in spans:
-        if not isinstance(span, dict):
-            continue
+        if not isinstance(span, dict) or _is_tool_span(span):
+            continue  # a tool span is never its own parent
         kind = _span_kind(span).lower()
         has_kids = isinstance(span.get("children") or span.get("spans"), list) and len(
             span.get("children") or span.get("spans") or []
@@ -474,7 +535,7 @@ def _collect_parent_spans(spans: Any) -> list[dict[str, Any]]:
     by_id = {s.get("span_id"): s for s in flat if isinstance(s.get("span_id"), (str, int))}
     for tool in _collect_tool_spans(spans):
         pid = tool.get("parent_id")
-        if pid in by_id and by_id[pid] not in parents:
+        if pid in by_id and by_id[pid] not in parents and not _is_tool_span(by_id[pid]):
             parents.append(by_id[pid])
     return parents
 
@@ -571,7 +632,17 @@ def check_spans(path: Path) -> list[str]:
     """Run A1 + A2 on a span-tree receipt (field-remix-3). Empty list = pass."""
     records = _load_json_or_jsonl(path)
     last = records[-1]
-    return assert_span_tree_min(last) + assert_tool_invocation_valid(last)
+    # The command passes only on a parent span with a tool span, so an empty
+    # record or a span list with no tool span fails here (A1/A2 alone skip them).
+    spans = last.get("spans")
+    if spans is None:
+        return ["check-spans: missing spans"]
+    if not isinstance(spans, list) or len(spans) == 0:
+        return ["check-spans: spans must be a non-empty list"]
+    reasons = assert_span_tree_min(last) + assert_tool_invocation_valid(last)
+    if not _collect_tool_spans(spans):
+        reasons.append("check-spans: no tool span (needs a parent span with a tool span)")
+    return reasons
 
 
 def _load_zero_fixture(path: Path) -> dict[str, Any]:
@@ -662,6 +733,13 @@ def assert_two_zero_split(
     elif flags_a[1] and flags_b[1] and not (flags_a[0] or flags_b[0]):
         reasons.append(
             "A3 assert_two_zero_split: both look like late malform, no discrimination"
+        )
+
+    # One fixture must be the early stall only, the other the late malform only
+    if not reasons and {flags_a, flags_b} != {(True, False), (False, True)}:
+        reasons.append(
+            "A3 assert_two_zero_split: each fixture must show exactly one mode "
+            "(one early stall, one late malform)"
         )
 
     return reasons
@@ -929,7 +1007,9 @@ def check_trajectory(path: Path, *, mode: str) -> list[str]:
 # --- prewrite (before the write; declarative, no LLM) -------------------
 # Grades a PROPOSED tool call against rules before any mutation.
 # deny_if supports only: eq, ne, unchanged (field), forbidden (field).
-# Missing rules, or a write with no covering rule, fails closed.
+# Missing or empty rules, or any call with no covering rule, fails closed.
+# A proposal's own "write" field is ignored; a rule with read_only: true may
+# cover a call without deny_if.
 # Judge score / "looks good" / status=done never authorizes a pass.
 
 def _path_get(obj: Any, dotted: str) -> tuple[bool, Any]:
@@ -1015,8 +1095,11 @@ def evaluate_prewrite(payload: dict[str, Any]) -> list[str]:
     rules = payload["rules"]
     if not isinstance(rules, list):
         return ["rules must be a list, fail-closed"]
+    if not rules:
+        return ["rules is empty, fail-closed"]
 
-    is_write = proposed.get("write", True) is not False
+    # Read-only status comes from a rule (read_only: true), never from a field in
+    # the proposal: the caller being guarded must not decide that it needs no rule.
     covered = False
     reasons: list[str] = []
     for i, rule in enumerate(rules):
@@ -1029,12 +1112,14 @@ def evaluate_prewrite(payload: dict[str, Any]) -> list[str]:
             continue
         covered = True
         if "deny_if" not in rule:
+            if rule.get("read_only") is True:
+                continue
             return [f"rules[{i}] missing deny_if, fail-closed"]
         fired, why = _deny_fires(rule["deny_if"], state, args)
         if fired:
             reasons.append(f"deny {name}: {why}")
-    if is_write and not covered:
-        reasons.append(f"write tool {name} has no covering rule, fail-closed")
+    if not covered:
+        reasons.append(f"tool {name} has no covering rule, fail-closed")
     return reasons
 
 

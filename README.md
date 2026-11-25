@@ -21,6 +21,7 @@ homi-gate check-completion examples/fail.json
 FAIL check-completion: examples/fail.json
   - truncated=true on final record
   - completion_bit=false
+  - status='truncated' is incomplete
 ```
 
 That command exits 1. The same check on `examples/pass.json` prints `PASS check-completion: examples/pass.json` and exits 0.
@@ -35,8 +36,8 @@ That command exits 1. The same check on `examples/pass.json` prints `PASS check-
 |---|---|---|
 | `PASS <check>: <file>` | 0 | The file meets every rule of that check. |
 | `FAIL <check>: <file>` and one reason per line on stderr | 1 | A rule failed, or the file is missing, empty or unreadable. |
-| `{"applied": true, "exit": 0}` | 0 | `check-prewrite` only: a rule allows the proposed write. |
-| `{"applied": false, "exit": 1, "reason": "..."}` | 1 | `check-prewrite` only: a rule denies the write, or no rule covers it. |
+| `{"applied": true, "exit": 0}` | 0 | `check-prewrite` only: a rule allows the proposed call. |
+| `{"applied": false, "exit": 1, "reason": "..."}` | 1 | `check-prewrite` only: a rule denies the call, or no rule covers it. |
 | `usage: homi-gate ...` | 2 | Wrong arguments, such as `check-trajectory` without `--mode`. |
 
 A `PASS` shows that the record has the shape the check requires. It does not show that the agent's answer was correct.
@@ -63,14 +64,14 @@ Each command reads one JSON, JSON list or JSONL file (the final record is graded
 
 | Command | Passes when | Fails when |
 |---|---|---|
-| `check-completion` | the completion bit or a complete `status`, plus a proof or artifact path | `truncated: true`, an incomplete status, neither bit nor status, done without proof, or an earlier record truncated |
-| `check-handoff` | `from_agent`, `to_agent`, `proved`, `pending`, `stop`, `forbidden` and `report` are set, and `pending` is one goal | `context` is null or empty, a field is missing or null, or `pending` is a list or a dump |
-| `check-mcp-allowlist` | an allowlist and a denylist with no overlap, or `enabled: false` with named tools | a list is missing, the allowlist is empty, or a tool is in both |
-| `check-tools` | `tools_called` matches `expected_tools` by name (with `--exact-args`, by arguments too) | an unexpected tool, a missing tool, or an empty expected list |
-| `check-spans` | a parent span with a tool span whose status is `ok`, `error` or `denied` (A1, A2) | tool use is claimed with no tool span, or a tool span is malformed |
-| `check-spans --two-zero` | two runs scored `correctness=0` are told apart as an early stall and a late malformed call (A3) | the two runs look the same |
+| `check-completion` | the completion bit or a complete `status`, plus a proof or artifact path | `truncated` is anything but `false`, an incomplete or unknown status (even with the bit set), neither bit nor status, done without proof, or an earlier record truncated |
+| `check-handoff` | `from_agent`, `to_agent`, `proved`, `pending`, `stop`, `forbidden` and `report` are set, and `pending` is one goal | `context` is null or empty, a field is missing, null or empty, or `pending` is not one goal string (a longer list, an object or a dump) |
+| `check-mcp-allowlist` | an allowlist of named tools and a denylist (which may be empty) with no overlap, or `enabled: false` with named tools | a list is missing, the allowlist is empty or holds a wildcard such as `*`, `all` or `any`, a tool is in both, or the file is not valid YAML or JSON |
+| `check-tools` | `tools_called` matches `expected_tools` by name and count (with `--exact-args`, by arguments too) | an unexpected tool, a missing tool, an expected tool called more often than listed, or an empty expected list |
+| `check-spans` | a parent span with a tool span whose status is `ok`, `error` or `denied` (A1, A2) | spans are missing or empty, there is no tool span, a tool span has no parent span, or a tool span is malformed |
+| `check-spans --two-zero` | two runs scored `correctness=0` are told apart as an early stall and a late malformed call (A3) | the two runs look the same, or one run shows both modes |
 | `check-trajectory --mode` | `strict`: the expected calls in order. `subset`: no extra call. `superset`: no missing call | an extra, missing or reordered call for that mode, or a judge score with no trajectory |
-| `check-prewrite` | a rule covers the proposed write and its `deny_if` (`eq`, `ne`, `unchanged`, `forbidden`) does not fire | no rules, no covering rule, an unsupported condition, or a missing `state.` or `args.` path |
+| `check-prewrite` | a rule covers the proposed call and its `deny_if` (`eq`, `ne`, `unchanged`, `forbidden`) does not fire; a rule with `read_only: true` may cover a call without `deny_if` | no rules or an empty list, no covering rule (a `write: false` field in the proposal does not skip this), an unsupported condition, or a missing `state.` or `args.` path |
 | `check-tool-result` | an MCP `CallToolResult` without `isError: true`, whose `structuredContent` is valid when an `outputSchema` is declared | `isError: true`, a non-boolean `isError`, or missing or invalid `structuredContent` |
 
 A score or judge field in a trajectory or prewrite record is ignored, so a judge cannot turn a failing record into a pass. The three trajectory modes follow [LangChain AgentEvals](https://docs.langchain.com/oss/python/langchain/test/evals).
@@ -102,6 +103,8 @@ It exits 1. This repository's [CI workflow](.github/workflows/ci.yml) runs the t
 - It trusts what the record says. A receipt that names a proof path passes even when that file does not exist.
 - Field names are fixed, so other receipt formats need a converter first.
 - `check-mcp-allowlist` reads a config file. It does not connect to an MCP server.
+- `check-prewrite` and `run_guarded` trust the rules in the payload, so the rules must come from you and not from the agent whose call is checked.
+- `check-handoff` accepts an empty list for `proved` (nothing proved yet) and for `forbidden` (nothing forbidden).
 - It needs Python 3.11 or later, with `jsonschema` and `PyYAML`. On Windows the printed paths use backslashes.
 - The examples are synthetic and hold no secrets.
 
