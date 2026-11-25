@@ -77,3 +77,49 @@ def test_missing_bit_and_status(tmp_path: Path):
     p.write_text('{"run_id": "x"}', encoding="utf-8")
     reasons = check_completion(p)
     assert any("missing" in r for r in reasons)
+
+
+def _write(tmp_path: Path, body: str) -> Path:
+    p = tmp_path / "r.json"
+    p.write_text(body, encoding="utf-8")
+    return p
+
+
+def test_incomplete_status_fails_even_with_completion_bit_true(tmp_path: Path):
+    p = _write(tmp_path, '{"completion_bit": true, "status": "error", "proof": "out.txt"}')
+    assert any("status='error' is incomplete" in r for r in check_completion(p))
+    assert main(["check-completion", str(p)]) == 1
+
+
+def test_unknown_status_fails_even_with_completion_bit_true(tmp_path: Path):
+    p = _write(tmp_path, '{"completion_bit": true, "status": "pending", "proof": "out.txt"}')
+    assert any("not a known complete status" in r for r in check_completion(p))
+
+
+def test_null_completion_bit_falls_back_to_complete_false(tmp_path: Path):
+    p = _write(
+        tmp_path,
+        '{"completion_bit": null, "complete": false, "status": "done", "proof": "x"}',
+    )
+    assert any("completion_bit=false" in r for r in check_completion(p))
+    assert main(["check-completion", str(p)]) == 1
+
+
+def test_truncated_flag_that_is_not_false_fails(tmp_path: Path):
+    for val in ('"true"', "1", "null", '"yes"'):
+        p = _write(
+            tmp_path,
+            '{"truncated": ' + val + ', "completion_bit": true, "proof": "out.txt"}',
+        )
+        assert any("truncated" in r for r in check_completion(p)), val
+        assert main(["check-completion", str(p)]) == 1
+
+
+def test_mid_stream_truncated_string_flag_vetoes_final(tmp_path: Path):
+    p = tmp_path / "r.jsonl"
+    p.write_text(
+        '{"truncated": "true"}\n'
+        '{"completion_bit": true, "truncated": false, "proof": "x"}\n',
+        encoding="utf-8",
+    )
+    assert any("record[0] truncated" in r for r in check_completion(p))

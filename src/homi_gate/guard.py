@@ -28,7 +28,7 @@ def run_guarded(payload: dict[str, Any], tools: dict[str, Callable[..., Any]]) -
     if reasons:
         raise Denied(reasons)
     proposed = payload["proposed"]
-    name = proposed["name"]
+    name = proposed["name"].strip()  # the same name the check graded
     if name not in tools:
         raise Denied([f"no tool registered for {name!r}"])
-    return tools[name](**proposed.get("args", {}))
+    return tools[name](**(proposed.get("args") or {}))

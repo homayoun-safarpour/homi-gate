@@ -39,3 +39,12 @@ def test_readme_first_screen_matches_top100_craft():
 def test_readme_stranger_fail_is_untrusted():
     code = main(["check-completion", str(FAIL)])
     assert code == 1
+
+
+def test_readme_fail_block_matches_real_reasons():
+    from homi_gate.cli import check_completion
+
+    start = README.index("FAIL check-completion: examples/fail.json\n")
+    block = README[start : README.index("```", start)].splitlines()[1:]
+    shown = [ln.strip()[2:] for ln in block if ln.strip()]
+    assert shown == check_completion(FAIL)
