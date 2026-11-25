@@ -141,3 +141,51 @@ def test_assert_two_zero_paths_pair():
         )
         == []
     )
+
+
+def test_empty_record_fails_check_spans(tmp_path: Path):
+    p = tmp_path / "s2.json"
+    p.write_text("{}", encoding="utf-8")
+    assert any("missing spans" in r for r in check_spans(p))
+    assert main(["check-spans", str(p)]) == 1
+
+
+def test_empty_spans_list_fails_check_spans(tmp_path: Path):
+    p = tmp_path / "s0.json"
+    p.write_text('{"spans": [], "tool_use": false}', encoding="utf-8")
+    assert any("non-empty list" in r for r in check_spans(p))
+
+
+def test_spans_without_tool_span_fail_check_spans(tmp_path: Path):
+    p = tmp_path / "s3.json"
+    p.write_text(
+        '{"spans": [{"kind": "agent", "name": "run", "status": "ok"}]}', encoding="utf-8"
+    )
+    assert any("no tool span" in r for r in check_spans(p))
+
+
+def test_parentless_tool_span_is_not_its_own_parent(tmp_path: Path):
+    p = tmp_path / "s1.json"
+    p.write_text(
+        '{"tool_use": true, "spans": [{"kind": "tool", "name": "x", "status": "ok", "args": {}}]}',
+        encoding="utf-8",
+    )
+    assert any("no parent span" in r for r in check_spans(p))
+    assert main(["check-spans", str(p)]) == 1
+
+
+def test_two_zero_fixture_with_both_modes_and_one_with_neither_fails(tmp_path: Path):
+    a = tmp_path / "zero_both.json"
+    b = tmp_path / "zero_neither.json"
+    a.write_text(
+        '{"correctness": 0, "plan_complete": true, "tool_call_count": 9, '
+        '"unique_tools": 1, "tool_invocation_valid": false}',
+        encoding="utf-8",
+    )
+    b.write_text(
+        '{"correctness": 0, "plan_complete": false, "tool_call_count": 2, '
+        '"unique_tools": 2, "tool_invocation_valid": true}',
+        encoding="utf-8",
+    )
+    reasons = assert_two_zero_split(a, b)
+    assert any("exactly one" in r for r in reasons)

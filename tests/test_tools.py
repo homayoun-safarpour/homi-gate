@@ -87,3 +87,23 @@ def test_expected_allowlist_alias(tmp_path: Path):
         encoding="utf-8",
     )
     assert check_tools(p) == []
+
+
+def test_repeated_call_beyond_expected_count_fails(tmp_path: Path):
+    p = tmp_path / "t1.json"
+    p.write_text(
+        '{"tools_called": ["delete_db", "delete_db", "delete_db"],'
+        ' "expected_tools": ["delete_db"]}',
+        encoding="utf-8",
+    )
+    assert any("extra calls" in r and "delete_db" in r for r in check_tools(p))
+    assert main(["check-tools", str(p)]) == 1
+
+
+def test_expected_twice_called_once_fails(tmp_path: Path):
+    p = tmp_path / "t2.json"
+    p.write_text(
+        '{"tools_called": ["read"], "expected_tools": ["read", "read"]}',
+        encoding="utf-8",
+    )
+    assert any("missing required tools" in r for r in check_tools(p))

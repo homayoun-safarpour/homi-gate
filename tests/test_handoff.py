@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from homi_gate.cli import check_handoff, main
@@ -54,3 +55,56 @@ def test_alias_from_to(tmp_path: Path):
         encoding="utf-8",
     )
     assert check_handoff(p) == []
+
+
+_BASE = {
+    "from_agent": "a",
+    "to_agent": "b",
+    "proved": ["x"],
+    "pending": "one goal",
+    "stop": "s",
+    "forbidden": [],
+    "report": "r",
+}
+
+
+def _handoff(tmp_path: Path, **over) -> Path:
+    p = tmp_path / "h.json"
+    p.write_text(json.dumps({**_BASE, **over}), encoding="utf-8")
+    return p
+
+
+def test_pending_object_or_number_fails(tmp_path: Path):
+    for val in ({}, {"goal": "x"}, 3, True):
+        reasons = check_handoff(_handoff(tmp_path, pending=val))
+        assert any("pending must be one goal" in r for r in reasons), val
+
+
+def test_pending_one_item_list_must_hold_non_empty_string(tmp_path: Path):
+    assert check_handoff(_handoff(tmp_path, pending=["one goal"])) == []
+    for val in ([""], [{}], [None]):
+        reasons = check_handoff(_handoff(tmp_path, pending=val))
+        assert any("pending must be one goal" in r for r in reasons), val
+
+
+def test_empty_string_context_fails_like_null(tmp_path: Path):
+    p = _handoff(tmp_path, context="  ")
+    assert any("context is empty" in r for r in check_handoff(p))
+    assert main(["check-handoff", str(p)]) == 1
+
+
+def test_empty_stop_or_report_container_fails(tmp_path: Path):
+    for field in ("stop", "report"):
+        for val in ([], {}):
+            reasons = check_handoff(_handoff(tmp_path, **{field: val}))
+            assert any(f"{field} is empty" in r for r in reasons), (field, val)
+
+
+def test_limit_empty_proved_and_forbidden_lists_are_allowed(tmp_path: Path):
+    """README Limits: an empty proved or forbidden list is an explicit none."""
+    assert check_handoff(_handoff(tmp_path, proved=[], forbidden=[])) == []
+
+
+def test_reviewer_handoff_h1_fails(tmp_path: Path):
+    p = _handoff(tmp_path, pending={}, context="")
+    assert main(["check-handoff", str(p)]) == 1

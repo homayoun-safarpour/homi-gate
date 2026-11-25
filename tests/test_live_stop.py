@@ -42,3 +42,12 @@ def test_allowed_write_runs_then_continues(tmp_path):
     _agent(payload, ledger, calls)()
     assert calls == ["cancel_reservation", "next_step"]
     assert json.loads(ledger.read_text()) == {"id": "R1"}
+
+
+def test_run_guarded_never_runs_tool_marked_write_false_with_no_rules(tmp_path):
+    payload = {"proposed": {"name": "delete_repo", "write": False, "args": {}}, "rules": []}
+    ledger, calls = tmp_path / "ledger.json", []
+    with pytest.raises(Denied):
+        _agent(payload, ledger, calls)()
+    assert calls == []
+    assert not ledger.exists()
