@@ -189,3 +189,14 @@ def test_two_zero_fixture_with_both_modes_and_one_with_neither_fails(tmp_path: P
     )
     reasons = assert_two_zero_split(a, b)
     assert any("exactly one" in r for r in reasons)
+
+
+def test_tool_span_requires_its_stated_parent():
+    agent = {"span_id": "run", "kind": "agent"}
+    recorded = {"kind": "tool", "name": "lookup", "status": "ok", "args": {}}
+    connected = {**recorded, "span_id": "one", "parent_id": "run"}
+    detached = {**recorded, "span_id": "two", "parent_id": "missing"}
+    assert assert_span_tree_min({"spans": [agent, connected]}) == []
+    assert any("parent_id" in reason for reason in assert_span_tree_min(
+        {"spans": [agent, connected, detached]}
+    ))

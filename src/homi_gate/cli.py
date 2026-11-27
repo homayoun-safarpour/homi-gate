@@ -535,7 +535,7 @@ def _collect_parent_spans(spans: Any) -> list[dict[str, Any]]:
     by_id = {s.get("span_id"): s for s in flat if isinstance(s.get("span_id"), (str, int))}
     for tool in _collect_tool_spans(spans):
         pid = tool.get("parent_id")
-        if pid in by_id and by_id[pid] not in parents and not _is_tool_span(by_id[pid]):
+        if isinstance(pid, (str, int)) and pid in by_id and by_id[pid] not in parents and not _is_tool_span(by_id[pid]):
             parents.append(by_id[pid])
     return parents
 
@@ -580,7 +580,15 @@ def assert_span_tree_min(rec: dict[str, Any]) -> list[str]:
         )
         return reasons
 
+    parent_ids = {
+        span["span_id"] for span in parents if isinstance(span.get("span_id"), (str, int))
+    }
     for i, tool in enumerate(tools):
+        parent_id = tool.get("parent_id")
+        if parent_id not in (None, "", 0) and (
+            not isinstance(parent_id, (str, int)) or parent_id not in parent_ids
+        ):
+            reasons.append(f"A1 assert_span_tree_min: tool span[{i}] parent_id has no parent span")
         name = _tool_span_name(tool)
         status = tool.get("status")
         if name is None:
